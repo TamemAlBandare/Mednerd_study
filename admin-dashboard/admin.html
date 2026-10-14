@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>لوحة الإدارة الطبية | Medical Admin Panel</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Cairo', sans-serif; }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen p-4 md:p-8">
+
+<!-- بوابة تسجيل دخول الأدمن المقفلة -->
+<div id="login-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 backdrop-blur-md p-4">
+    <div class="bg-slate-900 border border-slate-800 p-8 rounded-3xl max-w-md w-full shadow-2xl space-y-6 text-center">
+      <div class="w-14 h-14 bg-sky-500/10 border border-sky-500/20 text-sky-400 rounded-2xl flex items-center justify-center mx-auto text-2xl">
+        🛡️
+      </div>
+      <div>
+        <h2 class="text-xl font-bold text-white">بوابة الإدارة المركزية</h2>
+        <p class="text-xs text-slate-400 mt-1">يقتصر الدخول على حسابات المشرفين المعتمدين فقط</p>
+      </div>
+      <form id="admin-login-form" onsubmit="handleAdminLogin(event)" class="space-y-4 text-right">
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-1">البريد الإلكتروني للإدارة</label>
+          <input type="email" id="admin-email" required placeholder="admin@example.com" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-sky-500 text-sm">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-1">كلمة المرور</label>
+          <input type="password" id="admin-password" required placeholder="••••••••" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:outline-none focus:border-sky-500 text-sm">
+        </div>
+        <p id="login-error-msg" class="text-xs text-rose-400 hidden text-center"></p>
+        <button type="submit" id="btn-login-submit" class="w-full py-3 bg-sky-600 hover:bg-sky-500 font-bold rounded-xl transition text-center shadow-lg shadow-sky-950">
+          تسجيل الدخول
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="max-w-7xl mx-auto space-y-8">
+    
+    <!-- الترويسة العلوية -->
+    <header class="flex flex-col md:flex-row justify-between items-center border-b border-slate-700 pb-6 gap-4">
+      <div>
+        <h1 class="text-2xl md:text-3xl font-bold text-sky-400">لوحة الإدارة المركزية</h1>
+        <p class="text-sm text-slate-400 mt-1">إدارة الأكواد، المحاضرات، وبصمات العتاد للطلاب</p>
+      </div>
+      <div class="flex items-center gap-2 bg-slate-800 px-4 py-2 rounded-lg border border-slate-700 text-xs">
+        <span id="connection-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+        <span id="connection-status">متصل بـ Supabase</span>
+        <button onclick="handleAdminLogout()" class="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs rounded-lg transition">
+            خروج 🚪
+        </button>
+      </div>
+    </header>
+
+    <!-- شبكة البطاقات الإحصائية (KPI Cards) -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+      <div class="bg-white text-slate-800 p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition">
+        <div class="flex justify-between items-start">
+          <span class="text-xs font-semibold text-slate-400">إجمالي الطلاب المسجلين</span>
+          <div class="w-10 h-10 rounded-xl bg-sky-50 flex items-center justify-center text-sky-600 text-lg">👥</div>
+        </div>
+        <div class="mt-4">
+          <h3 id="stat-total-students" class="text-3xl font-extrabold text-slate-900 tracking-tight">0</h3>
+          <p class="text-xs text-emerald-600 font-medium mt-1 flex items-center gap-1">
+            <span id="stat-total-students-change"></span> <span class="text-slate-400">عن الشهر الماضي</span>
+          </p>
+        </div>
+      </div>
+
+      <div class="bg-white text-slate-800 p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition">
+        <div class="flex justify-between items-start">
+          <span class="text-xs font-semibold text-slate-400">المحاضرات المنشورة</span>
+          <div class="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 text-lg">📖</div>
+        </div>
+        <div class="mt-4">
+          <h3 id="stat-total-lectures" class="text-3xl font-extrabold text-slate-900 tracking-tight">0</h3>
+          <p class="text-xs text-emerald-600 font-medium mt-1 flex items-center gap-1">
+            <span id="stat-total-lectures-change"></span> <span class="text-slate-400">عن الشهر الماضي</span>
+          </p>
+        </div>
+      </div>
+
+      <div class="bg-white text-slate-800 p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition">
+        <div class="flex justify-between items-start">
+          <span class="text-xs font-semibold text-slate-400">أكواد التفعيل النشطة</span>
+          <div class="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600 text-lg">&lt;/&gt;</div>
+        </div>
+        <div class="mt-4">
+          <h3 id="stat-active-codes" class="text-3xl font-extrabold text-slate-900 tracking-tight">0</h3>
+          <p class="text-xs text-emerald-600 font-medium mt-1 flex items-center gap-1">
+            <span id="stat-active-codes-change"></span> <span class="text-slate-400">عن الشهر الماضي</span>
+          </p>
+        </div>
+      </div>
+
+      <div class="bg-white text-slate-800 p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition">
+        <div class="flex justify-between items-start">
+          <span class="text-xs font-semibold text-slate-400">معدل النشاط اليومي</span>
+          <div class="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600 text-lg">📈</div>
+        </div>
+        <div class="mt-4">
+          <h3 id="stat-active-rate" class="text-3xl font-extrabold text-slate-900 tracking-tight">100%</h3>
+          <p class="text-xs text-emerald-600 font-medium mt-1 flex items-center gap-1">
+            <span id="stat-active-rate-change">0</span> <span class="text-slate-400">عن الشهر الماضي</span>
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- شبكة الإجراءات الرئيسية -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      
+      <!-- 1. أداة توليد الأكواد (مادة + دكتور + سنة) -->
+      <section class="bg-slate-800/80 border border-slate-700 p-6 rounded-2xl shadow-xl flex flex-col justify-between">
+        <div>
+          <h2 class="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2">
+            <span>🎟️</span> توليد الأكواد (مادة + دكتور)
+          </h2>
+          <div class="space-y-3.5 text-sm">
+            <div>
+              <label class="block text-slate-400 mb-1">1. اختر المادة الدراسية</label>
+              <select id="gen-subject-id" title="اختر المادة الدراسية" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-sky-500 text-sm">
+                <option value="">جاري تحميل المواد الدراسية...</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-slate-400 mb-1">2. أستاذ المادة (الدكتور)</label>
+              <select id="gen-prof-id" title="اختر أستاذ المادة" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-sky-500 text-sm">
+                <option value="">-- اختر المادة أولاً لجلب الدكاترة --</option>
+              </select>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-slate-400 mb-1">بادئة المادة</label>
+                <input type="text" id="gen-prefix" placeholder="ANT" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-sky-500 uppercase font-mono text-center">
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">رمز الدكتور</label>
+                <input type="text" id="gen-prof-prefix" placeholder="DOC" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-sky-500 uppercase font-mono text-center">
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-slate-400 mb-1">السنة الدراسية</label>
+                <input
+                  type="number"
+                  id="gen-year"
+                  value="2026"
+                  placeholder="مثلاً: 2026"
+                  title="أدخل السنة الدراسية"
+                  class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-sky-500 text-center font-mono"
+                  min="2000"
+                  max="2100"
+                  step="1"
+                  required
+                >
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1">العدد المطلوب</label>
+                <input
+                  type="number"
+                  id="gen-count"
+                  value="10"
+                  min="1"
+                  max="1000"
+                  placeholder="مثلاً: 10"
+                  title="أدخل العدد المطلوب من الأكواد"
+                  class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-sky-500 text-center font-mono"
+                  required
+                >
+              </div>
+            </div>
+            <div>
+              <label class="block text-slate-400 mb-1">اسم الدفعة (اختياري)</label>
+              <input type="text" id="gen-batch" placeholder="مثلاً: دفعة الخريف 2026" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-sky-500">
+            </div>
+            <div class="p-2.5 bg-slate-950/70 border border-slate-800 rounded-lg text-xs text-slate-400">
+              نموذج الكود الناتج: <span id="code-preview" class="font-mono text-amber-400 font-bold">ANT-DOC-26-XXXX</span>
+            </div>
+          </div>
+        </div>
+        <button id="btn-generate" onclick="generateCodesBatch()" class="mt-6 w-full py-3 bg-sky-600 hover:bg-sky-500 disabled:bg-slate-700 font-bold rounded-xl transition text-center shadow-lg shadow-sky-950">
+          بدء توليد الأكواد
+        </button>
+      </section>
+
+      <!-- 2. إضافة محاضرة جديدة -->
+      <section class="bg-slate-800/80 border border-slate-700 p-6 rounded-2xl shadow-xl lg:col-span-2">
+        <h2 class="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2">
+          <span>📚</span> تسجيل محاضرة جديدة
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+          <div>
+            <label class="block text-slate-400 mb-1">المادة الدراسية للمحاضرة</label>
+            <select id="lec-subject-id" title="اختر المادة الدراسية للمحاضرة" aria-label="المادة الدراسية للمحاضرة" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:border-sky-500 text-sm">
+              <option value="">-- اختر المادة --</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-slate-400 mb-1">أستاذ المادة (الدكتور)</label>
+            <select id="lec-prof-id" title="اختر أستاذ المادة" aria-label="أستاذ المادة (الدكتور)" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:border-sky-500 text-sm">
+              <option value="">-- اختر المادة أولاً --</option>
+            </select>
+          </div>
+          <div class="md:col-span-2">
+            <label class="block text-slate-400 mb-1">عنوان المحاضرة</label>
+            <input type="text" id="lec-title" placeholder="مثال: تشريح الأطراف العلوية - 1" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:border-sky-500">
+          </div>
+          <div>
+            <label class="block text-slate-400 mb-1">معرّف فيديو التيليجرام (Telegram Video ID)</label>
+            <input type="text" id="lec-video-id" placeholder="BAACAgIAAxkBA..." class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white font-mono text-xs focus:border-sky-500">
+          </div>
+          <div>
+            <label class="block text-slate-400 mb-1">معرّف ملخص الـ PDF (Telegram PDF ID)</label>
+            <input type="text" id="lec-pdf-id" placeholder="BQACAgIAAxkBA..." class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white font-mono text-xs focus:border-sky-500">
+          </div>
+          <div class="md:col-span-2">
+            <label class="block text-slate-400 mb-1">رابط الفيديو المباشر (Direct/HLS Video URL - اختياري)</label>
+            <input type="url" id="lec-video-url" placeholder="https://cdn.example.com/video.m3u8 أو .mp4" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white font-mono text-xs focus:border-sky-500">
+          </div>
+          <div>
+            <label for="lec-duration" class="block text-slate-400 mb-1">المدة (بالدقائق)</label>
+            <input type="number" id="lec-duration" value="45" min="1" max="500" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:border-sky-500 font-mono">
+          </div>
+          <div>
+            <label class="block text-slate-400 mb-1">ترتيب المحاضرة في القائمة</label>
+            <input 
+              type="number" 
+              id="lec-order" 
+              value="1" 
+              min="1" 
+              max="1000" 
+              placeholder="أدخل ترتيب المحاضرة" 
+              title="ترتيب المحاضرة في القائمة" 
+              class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:border-sky-500 font-mono"
+            >
+          </div>
+        </div>
+        <button onclick="addLecture()" class="mt-6 w-full py-3 bg-emerald-600 hover:bg-emerald-500 font-bold rounded-xl transition text-center shadow-lg shadow-emerald-950">
+          حفظ ونشر المحاضرة
+        </button>
+      </section>
+
+    </div>
+
+    <!-- 3. جدول استعراض الأكواد وحالة التفعيل -->
+    <section class="bg-slate-800/80 border border-slate-700 p-6 rounded-2xl shadow-xl">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-lg font-bold text-slate-200 flex items-center gap-2">
+          <span>📋</span> قائمة الأكواد وتتبع الصلاحيات (مادة + دكتور)
+        </h2>
+        <button onclick="loadCodes()" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-xs rounded-lg transition">تحديث الجدول 🔄</button>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm text-right">
+          <thead class="text-xs text-slate-400 uppercase bg-slate-900/50 border-b border-slate-700">
+            <tr>
+              <th class="p-3">الكود</th>
+              <th class="p-3">المادة</th>
+              <th class="p-3">الدكتور</th>
+              <th class="p-3">الدفعة</th>
+              <th class="p-3">الحالة</th>
+              <th class="p-3">تاريخ التوليد</th>
+              <th class="p-3 text-center">الإجراء (تعطيل/تفعيل)</th>
+            </tr>
+          </thead>
+          <tbody id="codes-table-body" class="divide-y divide-slate-700">
+            <tr>
+              <td colspan="7" class="p-4 text-center text-slate-500">جاري تحميل الأكواد...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 4. جدول إدارة بصمات العتاد واشتراكات الطلاب -->
+    <section class="bg-slate-800/80 border border-slate-700 p-6 rounded-2xl shadow-xl">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-lg font-bold text-slate-200 flex items-center gap-2">
+          <span>🔒</span> إدارة أجهزة الطلاب واشتراكاتهم
+        </h2>
+        <button onclick="loadSubscriptions()" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-xs rounded-lg transition">تحديث الاشتراكات 🔄</button>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm text-right">
+          <thead class="text-xs text-slate-400 uppercase bg-slate-900/50 border-b border-slate-700">
+            <tr>
+              <th class="p-3">معرف الطالب</th>
+              <th class="p-3">المادة</th>
+              <th class="p-3">الدكتور</th>
+              <th class="p-3">بصمة العتاد الحالية</th>
+              <th class="p-3">حالة الاشتراك</th>
+              <th class="p-3 text-center">التحكم بالوصول</th>
+              <th class="p-3 text-center">فك الارتباط</th>
+            </tr>
+          </thead>
+          <tbody id="subs-table-body" class="divide-y divide-slate-700">
+            <tr>
+              <td colspan="7" class="p-4 text-center text-slate-500">جاري تحميل الاشتراكات...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- السكريبت البرمجي المحدث -->
+  <script type="module">
+    import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+    const SUPABASE_URL = "https://gubaorkjjqiclrnahjdt.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd1YmFvcmtqanFpY2xybmFoamR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwMTcyMTAsImV4cCI6MjEwNTU5MzIxMH0.mUwrnY4YlQN0pMwZjFC0cObDeh6htvobhlkLg8UmMTU";
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    function escapeHtml(text) {
+      if (text == null) return '';
+      const div = document.createElement('div');
+      div.appendChild(document.createTextNode(String(text)));
+      return div.innerHTML;
+    }
+
+    function randomString(length = 4) {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      const array = new Uint32Array(length);
+      crypto.getRandomValues(array);
+      let result = '';
+      for (let i = 0; i < length; i++) {
+        result += chars.charAt(array[i] % chars.length);
+      }
+      return result;
+    }
+
+    function isValidUUID(value) {
+      if (!value || typeof value !== 'string') return false;
+      const clean = value.trim();
+      if (clean === "" || clean.startsWith("--") || clean === "null" || clean === "undefined") return false;
+      const isStandardUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(clean);
+      return isStandardUUID || clean.length >= 8;
+    }
+
+    function cleanPrefix(name) {
+      if (!name) return 'DOC';
+      const clean = name.trim().replace(/[^a-zA-Z]/g, '').toUpperCase();
+      if (clean.length >= 3) return clean.substring(0, 3);
+      
+      const arabicMap = {
+        'أ': 'A', 'ا': 'A', 'ب': 'B', 'ت': 'T', 'ث': 'TH', 'ج': 'J',
+        'ح': 'H', 'خ': 'KH', 'د': 'D', 'ر': 'R', 'ز': 'Z', 'س': 'S',
+        'ش': 'SH', 'ص': 'S', 'ض': 'D', 'ط': 'T', 'ع': 'A', 'غ': 'GH',
+        'ف': 'F', 'ق': 'Q', 'ك': 'K', 'ل': 'L', 'م': 'M', 'ن': 'N',
+        'ه': 'H', 'و': 'W', 'ي': 'Y'
+      };
+      let trans = '';
+      for (let ch of name.trim()) {
+        if (arabicMap[ch]) trans += arabicMap[ch];
+      }
+      return trans.length >= 3 ? trans.substring(0, 3).toUpperCase() : (trans + 'DOC').substring(0, 3).toUpperCase();
+    }
+
+    function updatePreview() {
+      const p1 = document.getElementById('gen-prefix').value.trim().toUpperCase() || 'ANT';
+      const p2 = document.getElementById('gen-prof-prefix').value.trim().toUpperCase() || 'DOC';
+      const year = (document.getElementById('gen-year').value || '2026').slice(-2);
+      document.getElementById('code-preview').innerText = `${p1}-${p2}-${year}-XXXX`;
+    }
+
+    async function loadDashboardStats() {
+      try {
+        const { count: lecturesCount } = await supabase.from('lectures').select('*', { count: 'exact', head: true });
+        const lecElem = document.getElementById('stat-total-lectures');
+        if (lecElem) lecElem.innerText = lecturesCount != null ? lecturesCount : '0';
+
+        const { count: activeCodesCount } = await supabase.from('activation_codes').select('*', { count: 'exact', head: true }).eq('status', 'active');
+        const codeElem = document.getElementById('stat-active-codes');
+        if (codeElem) codeElem.innerText = activeCodesCount != null ? activeCodesCount.toLocaleString() : '0';
+
+        const { count: studentsCount } = await supabase.from('profiles').select('*', { count: 'exact', head: true });
+        const stuElem = document.getElementById('stat-total-students');
+        if (stuElem) stuElem.innerText = studentsCount != null ? studentsCount.toLocaleString() : '0';
+      } catch (e) {
+        console.error("Dashboard stats error:", e);
+      }
+    }
+
+    async function loadSubjectsDropdown() {
+      const genSelect = document.getElementById('gen-subject-id');
+      const lecSelect = document.getElementById('lec-subject-id');
+
+      try {
+        const { data: subjects, error } = await supabase
+          .from('subjects')
+          .select('id, name, code_prefix')
+          .order('name', { ascending: true });
+
+        if (error || !subjects || subjects.length === 0) {
+          const emptyHtml = '<option value="">لا توجد مواد مسجلة حالياً</option>';
+          if (genSelect) genSelect.innerHTML = emptyHtml;
+          if (lecSelect) lecSelect.innerHTML = emptyHtml;
+          return;
+        }
+
+        const optionsHtml = '<option value="">-- اختر المادة الدراسية --</option>' + 
+          subjects.map(s => `<option value="${s.id}" data-prefix="${s.code_prefix || 'MED'}">${escapeHtml(s.name)} (${escapeHtml(s.code_prefix || '')})</option>`).join('');
+
+        if (genSelect) {
+          genSelect.innerHTML = optionsHtml;
+          genSelect.onchange = async (e) => {
+            const selectedOption = e.target.options[e.target.selectedIndex];
+            const prefix = selectedOption.getAttribute('data-prefix');
+            if (prefix) document.getElementById('gen-prefix').value = prefix;
+            await loadProfessorsForSubject(e.target.value, 'gen-prof-id');
+            updatePreview();
+          };
+        }
+
+        if (lecSelect) {
+          lecSelect.innerHTML = optionsHtml;
+          lecSelect.onchange = async (e) => {
+            await loadProfessorsForSubject(e.target.value, 'lec-prof-id');
+          };
+        }
+      } catch (err) {
+        if (genSelect) genSelect.innerHTML = '<option value="">خطأ في جلب المواد</option>';
+      }
+    }
+
+    async function loadProfessorsForSubject(subjectId, targetSelectId) {
+      const profSelect = document.getElementById(targetSelectId);
+      if (!profSelect) return;
+
+      if (!subjectId || subjectId === "" || subjectId.includes("--")) {
+        profSelect.innerHTML = '<option value="">-- اختر المادة أولاً --</option>';
+        return;
+      }
+
+      profSelect.innerHTML = '<option value="">جاري جلب الدكاترة...</option>';
+
+      try {
+        const { data: spList, error: spError } = await supabase
+          .from('subject_professors')
+          .select('professors(id, name)')
+          .eq('subject_id', subjectId);
+
+        let profs = [];
+        if (!spError && spList && spList.length > 0) {
+          profs = spList.map(item => item.professors).filter(p => p != null);
+        } else {
+          const { data: allProfs } = await supabase.from('professors').select('id, name').order('name', { ascending: true });
+          if (allProfs) profs = allProfs;
+        }
+
+        if (profs.length === 0) {
+          profSelect.innerHTML = '<option value="">لا يوجد دكاترة مضافين</option>';
+          if (targetSelectId === 'gen-prof-id') {
+            document.getElementById('gen-prof-prefix').value = 'DOC';
+          }
+          return;
+        }
+
+        profSelect.innerHTML = '<option value="">-- اختر الدكتور --</option>' +
+          profs.map(p => `<option value="${p.id}" data-name="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`).join('');
+
+        profSelect.onchange = (e) => {
+          const opt = e.target.options[e.target.selectedIndex];
+          const profName = opt ? (opt.getAttribute('data-name') || '') : '';
+          if (targetSelectId === 'gen-prof-id') {
+            document.getElementById('gen-prof-prefix').value = cleanPrefix(profName);
+            updatePreview();
+          }
+        };
+
+        if (profs.length > 0) {
+          profSelect.selectedIndex = 1;
+          const opt = profSelect.options[1];
+          if (targetSelectId === 'gen-prof-id') {
+            document.getElementById('gen-prof-prefix').value = cleanPrefix(opt.getAttribute('data-name') || '');
+            updatePreview();
+          }
+        }
+      } catch (err) {
+        profSelect.innerHTML = '<option value="">خطأ في جلب بيانات الدكاترة</option>';
+      }
+    }
+
+    document.getElementById('gen-prefix').addEventListener('input', updatePreview);
+    document.getElementById('gen-prof-prefix').addEventListener('input', updatePreview);
+    document.getElementById('gen-year').addEventListener('input', updatePreview);
+
+    async function generateCodesBatch() {
+      const subjectSelect = document.getElementById('gen-subject-id');
+      const subjectId = subjectSelect ? subjectSelect.value.trim() : '';
+      const profSelect = document.getElementById('gen-prof-id');
+      const professorId = profSelect ? profSelect.value.trim() : '';
+
+      const subjectPrefix = document.getElementById('gen-prefix').value.trim().toUpperCase() || 'ANT';
+      const profPrefix = document.getElementById('gen-prof-prefix').value.trim().toUpperCase() || 'DOC';
+      const year = (document.getElementById('gen-year').value || '2026').trim().slice(-2);
+      const batchName = document.getElementById('gen-batch').value.trim() || `دفعة ${subjectPrefix}-${profPrefix}-${year}`;
+      const count = parseInt(document.getElementById('gen-count').value) || 1;
+      const btn = document.getElementById('btn-generate');
+
+      if (!subjectId || subjectId === "" || subjectId.includes("--")) {
+        alert('يرجى اختيار مادة دراسية من القائمة');
+        return;
+      }
+      if (!isValidUUID(professorId)) {
+        alert('يرجى اختيار أستاذ المادة (الدكتور) لربط الكود به بدقة');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerText = 'جاري التوليد بدقة... ⏳';
+
+      const generatedSet = new Set();
+      const rowsToInsert = [];
+
+      while (generatedSet.size < count) {
+        const uniqueCode = `${subjectPrefix}-${profPrefix}-${year}-${randomString(4)}`;
+        if (!generatedSet.has(uniqueCode)) {
+          generatedSet.add(uniqueCode);
+          rowsToInsert.push({
+            code: uniqueCode,
+            subject_id: subjectId,
+            professor_id: professorId,
+            batch_name: batchName,
+            status: 'active'
+          });
+        }
+      }
+
+      try {
+        const { error } = await supabase.from('activation_codes').insert(rowsToInsert);
+        if (error) {
+          alert('خطأ أثناء التوليد: ' + error.message);
+          console.error(error);
+        } else {
+          alert(`تم بنجاح توليد ${count} كود مرتبط بالمادة والدكتور!`);
+          loadCodes();
+          loadDashboardStats();
+        }
+      } catch (err) {
+        alert('خطأ في الاتصال: ' + err.message);
+        console.error(err);
+      } finally {
+        btn.disabled = false;
+        btn.innerText = 'بدء توليد الأكواد';
+      }
+    }
+
+    async function loadCodes() {
+      const tbody = document.getElementById('codes-table-body');
+      tbody.innerHTML = '<tr><td colspan="7" class="p-4 text-center text-slate-500">جاري التحديث...</td></tr>';
+
+      try {
+        const { data, error } = await supabase
+          .from('activation_codes')
+          .select('id, code, batch_name, status, created_at, subjects(name), professors(name)')
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+        if (error) {
+          tbody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-rose-500">${escapeHtml(error.message)}</td></tr>`;
+          return;
+        }
+
+        if (!data || data.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7" class="p-4 text-center text-slate-500">لا توجد أكواد بعد.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = data.map(item => `
+          <tr class="hover:bg-slate-700/40">
+            <td class="p-3 font-mono font-bold text-amber-400">${escapeHtml(item.code)}</td>
+            <td class="p-3 text-slate-300">${escapeHtml(item.subjects ? item.subjects.name : '-')}</td>
+            <td class="p-3 text-sky-300 font-semibold">${escapeHtml(item.professors ? item.professors.name : '-')}</td>
+            <td class="p-3 text-slate-400">${escapeHtml(item.batch_name || '-')}</td>
+            <td class="p-3">
+              <span class="px-2.5 py-1 rounded-full text-xs font-semibold ${item.status === 'active' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}">
+                ${item.status === 'active' ? 'نشط' : (item.status === 'used' ? 'مستخدم' : 'معطل')}
+              </span>
+            </td>
+            <td class="p-3 text-xs text-slate-400">${new Date(item.created_at).toLocaleDateString('ar-EG')}</td>
+            <td class="p-3 text-center">
+              <button onclick="toggleCodeStatus('${escapeHtml(item.id)}', '${escapeHtml(item.status)}')" class="px-3 py-1 text-xs rounded-lg font-medium transition ${item.status === 'active' ? 'bg-rose-600/30 text-rose-300 hover:bg-rose-600/50' : 'bg-emerald-600/30 text-emerald-300 hover:bg-emerald-600/50'}">
+                ${item.status === 'active' ? 'تعطيل 🔒' : 'تفعيل 🔓'}
+              </button>
+            </td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="7" class="p-4 text-center text-rose-500">خطأ في الاتصال بقاعدة البيانات</td></tr>';
+      }
+    }
+
+    // تعطيل أو تفعيل الكود مع حظر أو تفعيل وصول الطالب مباشرة
+    async function toggleCodeStatus(id, currentStatus) {
+      const newStatusCode = currentStatus === 'active' ? 'disabled' : 'active';
+      const newSubStatus = newStatusCode === 'active' ? 'active' : 'blocked';
+
+      try {
+        // 1. تحديث حالة الكود
+        const { error: codeErr } = await supabase
+          .from('activation_codes')
+          .update({ status: newStatusCode })
+          .eq('id', id);
+
+        if (codeErr) throw codeErr;
+
+        // 2. تحديث أي اشتراك طالب مرتبط بهذا الكود
+        const { error: subErr } = await supabase
+          .from('student_subscriptions')
+          .update({ status: newSubStatus })
+          .eq('activation_code_id', id);
+
+        if (subErr) console.warn("Notice: Subscription status update:", subErr.message);
+
+        alert(newStatusCode === 'active' ? 'تم تفعيل الكود وفتح اشتراك الطالب بنجاح' : 'تم تعطيل الكود وحظر اشتراك الطالب فوراً');
+        loadCodes();
+        loadSubscriptions();
+        loadDashboardStats();
+      } catch (err) {
+        alert('خطأ: ' + err.message);
+      }
+    }
+
+    async function addLecture() {
+      const subject_id = document.getElementById('lec-subject-id').value.trim();
+      const professor_id = document.getElementById('lec-prof-id').value.trim();
+      const title = document.getElementById('lec-title').value.trim();
+      const telegram_video_id = document.getElementById('lec-video-id').value.trim();
+      const telegram_pdf_id = document.getElementById('lec-pdf-id').value.trim();
+      const video_url = document.getElementById('lec-video-url').value.trim();
+      const duration_minutes = parseInt(document.getElementById('lec-duration').value) || 0;
+      const order_index = parseInt(document.getElementById('lec-order').value) || 1;
+
+      if (!isValidUUID(subject_id)) {
+        alert('يرجى اختيار المادة الدراسية للمحاضرة');
+        return;
+      }
+      if (!isValidUUID(professor_id)) {
+        alert('يرجى تحديد أستاذ المادة (الدكتور)');
+        return;
+      }
+      if (!title) {
+        alert('يرجى إدخال عنوان المحاضرة');
+        return;
+      }
+      if (!telegram_video_id && !video_url) {
+        alert('يرجى إدخال معرّف فيديو التيليجرام أو رابط الفيديو المباشر على الأقل');
+        return;
+      }
+
+      try {
+        const { error } = await supabase.from('lectures').insert([{
+          subject_id,
+          professor_id,
+          title,
+          telegram_video_id: telegram_video_id || null,
+          telegram_pdf_id: telegram_pdf_id || null,
+          video_url: video_url || null,
+          duration_minutes,
+          order_index
+        }]);
+
+        if (error) alert('خطأ في إضافة المحاضرة: ' + error.message);
+        else {
+          alert('تم نشر المحاضرة بنجاح وربطها بالمادة والدكتور!');
+          document.getElementById('lec-title').value = '';
+          document.getElementById('lec-video-id').value = '';
+          document.getElementById('lec-pdf-id').value = '';
+          document.getElementById('lec-video-url').value = '';
+          loadDashboardStats();
+        }
+      } catch (err) {
+        alert('خطأ في الاتصال: ' + err.message);
+      }
+    }
+
+    async function loadSubscriptions() {
+      const tbody = document.getElementById('subs-table-body');
+      tbody.innerHTML = '<tr><td colspan="7" class="p-4 text-center text-slate-500">جاري التحديث...</td></tr>';
+
+      try {
+        const { data, error } = await supabase
+          .from('student_subscriptions')
+          .select('id, user_id, hardware_fingerprint, status, subjects(name), professors(name)')
+          .limit(50);
+
+        if (error) {
+          tbody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-rose-500">${escapeHtml(error.message)}</td></tr>`;
+          return;
+        }
+
+        if (!data || data.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7" class="p-4 text-center text-slate-500">لا يوجد طلاب مفعّلون حالياً.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = data.map(sub => `
+          <tr class="hover:bg-slate-700/40">
+            <td class="p-3 font-mono text-xs text-slate-300">${escapeHtml(sub.user_id)}</td>
+            <td class="p-3 text-slate-300">${escapeHtml(sub.subjects ? sub.subjects.name : '-')}</td>
+            <td class="p-3 text-sky-300 font-semibold">${escapeHtml(sub.professors ? sub.professors.name : '-')}</td>
+            <td class="p-3 font-mono text-xs text-amber-300">${escapeHtml(sub.hardware_fingerprint || 'غير مربوط')}</td>
+            <td class="p-3">
+              <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold ${sub.status === 'active' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}">
+                ${sub.status === 'active' ? 'نشط' : 'محظور'}
+              </span>
+            </td>
+            <td class="p-3 text-center">
+              <button onclick="toggleSubscriptionStatus('${escapeHtml(sub.id)}', '${escapeHtml(sub.status)}')" class="px-2.5 py-1 text-xs rounded-lg font-medium transition ${sub.status === 'active' ? 'bg-rose-600/30 text-rose-300 hover:bg-rose-600/50' : 'bg-emerald-600/30 text-emerald-300 hover:bg-emerald-600/50'}">
+                ${sub.status === 'active' ? 'حظر 🚫' : 'إتاحة ✅'}
+              </button>
+            </td>
+            <td class="p-3 text-center">
+              <button onclick="resetHardware('${escapeHtml(sub.id)}')" class="px-2.5 py-1 text-xs bg-amber-600/30 hover:bg-amber-600/50 text-amber-200 rounded-lg transition">
+                فك الارتباط 🔓
+              </button>
+            </td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="7" class="p-4 text-center text-rose-500">خطأ في الاتصال بقاعدة البيانات</td></tr>';
+      }
+    }
+
+    // زر إيقاف أو تفعيل اشتراك الطالب الفردي مباشرة
+    async function toggleSubscriptionStatus(subscriptionId, currentStatus) {
+      const newStatus = currentStatus === 'active' ? 'blocked' : 'active';
+      try {
+        const { error } = await supabase
+          .from('student_subscriptions')
+          .update({ status: newStatus })
+          .eq('id', subscriptionId);
+
+        if (error) alert(error.message);
+        else {
+          alert(newStatus === 'active' ? 'تم فتح الوصول للطالب بنجاح' : 'تم حظر وصول هذا الطالب للمقرر');
+          loadSubscriptions();
+        }
+      } catch (err) {
+        alert('خطأ: ' + err.message);
+      }
+    }
+
+    async function resetHardware(subscriptionId) {
+      if (!confirm('هل أنت متأكد من فك ارتباط جهاز هذا الطالب؟ سيمكنه ذلك من فتح المقرر على جهاز جديد.')) return;
+      const { error } = await supabase
+        .from('student_subscriptions')
+        .update({ hardware_fingerprint: null })
+        .eq('id', subscriptionId);
+
+      if (error) alert(error.message);
+      else {
+        alert('تم فك الارتباط بنجاح! أصبح بإمكان الطالب تسجيل الدخول من جهاز جديد الآن.');
+        loadSubscriptions();
+      }
+    }
+
+    window.generateCodesBatch = generateCodesBatch;
+    window.loadCodes = loadCodes;
+    window.toggleCodeStatus = toggleCodeStatus;
+    window.addLecture = addLecture;
+    window.loadSubscriptions = loadSubscriptions;
+    window.toggleSubscriptionStatus = toggleSubscriptionStatus;
+    window.resetHardware = resetHardware;
+
+    const ALLOWED_ADMIN_EMAILS = [
+      "tamem.alamare3@gmail.com"
+    ];
+
+    async function checkAdminAuth() {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session || !ALLOWED_ADMIN_EMAILS.includes(session.user.email)) {
+        document.getElementById('login-modal').classList.remove('hidden');
+        if (session) await supabase.auth.signOut();
+        return false;
+      }
+
+      document.getElementById('login-modal').classList.add('hidden');
+      return true;
+    }
+
+    async function handleAdminLogin(e) {
+      e.preventDefault();
+      const email = document.getElementById('admin-email').value.trim();
+      const password = document.getElementById('admin-password').value;
+      const errorMsg = document.getElementById('login-error-msg');
+      const submitBtn = document.getElementById('btn-login-submit');
+
+      errorMsg.classList.add('hidden');
+
+      if (!ALLOWED_ADMIN_EMAILS.includes(email)) {
+        errorMsg.innerText = "هذا الحساب غير مصرح له بالوصول إلى لوحة الإدارة.";
+        errorMsg.classList.remove('hidden');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.innerText = "جاري التحقق... ⏳";
+
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) {
+          errorMsg.innerText = "بيانات الدخول غير صحيحة: " + error.message;
+          errorMsg.classList.remove('hidden');
+        } else {
+          document.getElementById('login-modal').classList.add('hidden');
+          loadCodes();
+          loadSubscriptions();
+          loadDashboardStats();
+          loadSubjectsDropdown();
+        }
+      } catch (err) {
+        errorMsg.innerText = "تعذر الاتصال بالسيرفر: " + err.message;
+        errorMsg.classList.remove('hidden');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerText = "تسجيل الدخول";
+      }
+    }
+
+    async function handleAdminLogout() {
+      await supabase.auth.signOut();
+      window.location.reload();
+    }
+
+    window.handleAdminLogin = handleAdminLogin;
+    window.handleAdminLogout = handleAdminLogout;
+
+    const isAuthed = await checkAdminAuth();
+    if (isAuthed) {
+      loadCodes();
+      loadSubscriptions();
+      loadDashboardStats();
+      loadSubjectsDropdown();
+    }
+  </script>
+</body>
+</html>
