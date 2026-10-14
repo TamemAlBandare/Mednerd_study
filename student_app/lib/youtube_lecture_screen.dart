@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:youtube_player_iframe/youtube_player_iframe.dart';
+
 import 'bookmarks_service.dart';
 import 'pdf_viewer_screen.dart';
 import 'quiz_screen.dart';
@@ -100,12 +102,21 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
   final Random _rand = Random();
   bool _full = false;
 
+  int _fallbackDurationSeconds() {
+    final minsRaw = _active['duration_minutes'];
+    final mins = minsRaw is num
+        ? minsRaw.toInt()
+        : (int.tryParse('$minsRaw') ?? 0);
+    return mins > 0 ? mins * 60 : 0;
+  }
+
   @override
   void initState() {
     super.initState();
     SecurityService.enableSecureScreen();
     _active = widget.currentLecture;
     _lastKnownPos = widget.startAtSeconds ?? 0;
+    _lastKnownTotal = _fallbackDurationSeconds();
     _resolveWatermark();
     _checkBookmarkStatus();
     _yt = YoutubePlayerController.fromVideoId(
@@ -119,8 +130,10 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
         origin: 'https://www.youtube-nocookie.com',
       ),
     );
-    _progressTimer =
-        Timer.periodic(const Duration(seconds: 5), (_) => _saveProgress());
+    _progressTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => _saveProgress(),
+    );
     _wmTimer = Timer.periodic(const Duration(seconds: 7), (_) {
       if (!mounted) return;
       setState(() {
@@ -172,7 +185,8 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
           .maybeSingle();
       if (!mounted || _active['id']?.toString() != id) return;
       setState(
-          () => _description = (row?['description'] ?? '').toString().trim());
+        () => _description = (row?['description'] ?? '').toString().trim(),
+      );
     } catch (_) {}
   }
 
@@ -199,12 +213,12 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
     _savingProgress = true;
     try {
       final pos = (await _yt.currentTime).floor();
-      final total = (await _yt.duration).floor();
-      _lastKnownPos = pos;
-      _lastKnownTotal = total;
-      await _persistProgressValues(pos, total);
+      var total = (await _yt.duration).floor();
+      if (total <= 0) total = _fallbackDurationSeconds();
+      if (pos > 0) _lastKnownPos = pos;
+      if (total > 0) _lastKnownTotal = total;
+      await _persistProgressValues(_lastKnownPos, _lastKnownTotal);
     } catch (_) {
-      // في حال تم إغلاق المشغل، نحفظ آخر قيمة مسجلة
       await _persistProgressValues(_lastKnownPos, _lastKnownTotal);
     } finally {
       _savingProgress = false;
@@ -212,7 +226,8 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
   }
 
   Future<void> _persistProgressValues(int pos, int total) async {
-    if (total > 0 && pos >= total - 10) {
+    final effectiveTotal = total > 0 ? total : _fallbackDurationSeconds();
+    if (effectiveTotal > 0 && pos >= effectiveTotal - 10) {
       await WatchProgressService.clearProgress();
     } else if (pos >= 3) {
       await WatchProgressService.saveProgress(
@@ -220,7 +235,7 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
         allLectures: widget.allLectures,
         subjectTitle: widget.subjectTitle,
         positionSeconds: pos,
-        totalDurationSeconds: total,
+        totalDurationSeconds: effectiveTotal,
       );
     }
   }
@@ -234,7 +249,7 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
         _active = lecture;
         _description = '';
         _lastKnownPos = 0;
-        _lastKnownTotal = 0;
+        _lastKnownTotal = _fallbackDurationSeconds();
       });
       _checkBookmarkStatus();
       _yt.loadVideoById(videoId: id);
@@ -301,72 +316,80 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
   }
 
   Widget _player() {
-    return LayoutBuilder(builder: (context, c) {
-      var w = c.maxWidth;
-      final maxH = c.maxHeight.isFinite ? c.maxHeight : w * 9 / 16;
-      var h = w * 9 / 16;
-      if (h > maxH) {
-        h = maxH;
-        w = h * 16 / 9;
-      }
-      final topBlockH = min(52.0, h * 0.3);
-      final logoBlockH = min(_logoBlockHeight, h * 0.3);
-      final logoBlockW = min(_logoBlockWidth, w * 0.2);
-      return Center(
-        child: SizedBox(
-          width: w,
-          height: h,
-          child: Stack(
-            children: [
-              YoutubePlayer(controller: _yt, aspectRatio: 16 / 9),
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                height: topBlockH,
-                child: GestureDetector(
-                    behavior: HitTestBehavior.opaque, onTap: () {}),
-              ),
-              Positioned(
-                bottom: 0,
-                right: 0,
-                width: logoBlockW,
-                height: logoBlockH,
-                child: GestureDetector(
-                    behavior: HitTestBehavior.opaque, onTap: () {}),
-              ),
-              Positioned(
-                top: 2,
-                right: 2,
-                child: IconButton(
-                  icon: Icon(_full ? Icons.fullscreen_exit : Icons.fullscreen,
-                      color: AppColors.goldAccent),
-                  onPressed: _toggleFull,
+    return LayoutBuilder(
+      builder: (context, c) {
+        var w = c.maxWidth;
+        final maxH = c.maxHeight.isFinite ? c.maxHeight : w * 9 / 16;
+        var h = w * 9 / 16;
+        if (h > maxH) {
+          h = maxH;
+          w = h * 16 / 9;
+        }
+        final topBlockH = min(52.0, h * 0.3);
+        final logoBlockH = min(_logoBlockHeight, h * 0.3);
+        final logoBlockW = min(_logoBlockWidth, w * 0.2);
+        return Center(
+          child: SizedBox(
+            width: w,
+            height: h,
+            child: Stack(
+              children: [
+                YoutubePlayer(controller: _yt, aspectRatio: 16 / 9),
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: topBlockH,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {},
+                  ),
                 ),
-              ),
-              IgnorePointer(
-                child: AnimatedAlign(
-                  duration: const Duration(seconds: 2),
-                  alignment: _wmAlign,
-                  child: Opacity(
-                    opacity: 0.30,
-                    child: Text(
-                      _watermark,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.bold,
-                        shadows: [Shadow(blurRadius: 4, color: Colors.black)],
+                Positioned(
+                  bottom: 0,
+                  right: 0,
+                  width: logoBlockW,
+                  height: logoBlockH,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {},
+                  ),
+                ),
+                Positioned(
+                  top: 2,
+                  right: 2,
+                  child: IconButton(
+                    icon: Icon(
+                      _full ? Icons.fullscreen_exit : Icons.fullscreen,
+                      color: AppColors.goldAccent,
+                    ),
+                    onPressed: _toggleFull,
+                  ),
+                ),
+                IgnorePointer(
+                  child: AnimatedAlign(
+                    duration: const Duration(seconds: 2),
+                    alignment: _wmAlign,
+                    child: Opacity(
+                      opacity: 0.30,
+                      child: Text(
+                        _watermark,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.bold,
+                          shadows: [Shadow(blurRadius: 4, color: Colors.black)],
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      );
-    });
+        );
+      },
+    );
   }
 
   Widget _infoSection(bool isDark) {
@@ -388,7 +411,9 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
                 child: Text(
                   _active['title']?.toString() ?? 'محاضرة',
                   style: const TextStyle(
-                      fontSize: 16.5, fontWeight: FontWeight.bold),
+                    fontSize: 16.5,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
               IconButton(
@@ -423,13 +448,16 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
               ),
             ],
           ),
-          Text(meta,
-              style:
-                  TextStyle(fontSize: 12, color: Theme.of(context).hintColor)),
+          Text(
+            meta,
+            style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor),
+          ),
           if (_description.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text(_description,
-                style: const TextStyle(fontSize: 13.5, height: 1.5)),
+            Text(
+              _description,
+              style: const TextStyle(fontSize: 13.5, height: 1.5),
+            ),
           ],
           const SizedBox(height: 12),
           Wrap(
@@ -443,8 +471,10 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
                 ),
                 onPressed: _openQuiz,
                 icon: const Icon(Icons.quiz_outlined, size: 18),
-                label: const Text('اختبار المحاضرة',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
+                label: const Text(
+                  'اختبار المحاضرة',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
               ),
               if (_hasPdf)
                 OutlinedButton.icon(
@@ -454,8 +484,10 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
                   ),
                   onPressed: _openPdf,
                   icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
-                  label: const Text('ملخص PDF',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  label: const Text(
+                    'ملخص PDF',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
                 ),
             ],
           ),
@@ -472,8 +504,10 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
           padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
           child: Align(
             alignment: AlignmentDirectional.centerStart,
-            child: Text('محاضرات المقرر ($n)',
-                style: const TextStyle(fontWeight: FontWeight.bold)),
+            child: Text(
+              'محاضرات المقرر ($n)',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
           ),
         ),
         Expanded(
@@ -486,9 +520,7 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
                 selected: isActive,
                 selectedColor: AppColors.goldAccent,
                 leading: Icon(
-                  isActive
-                      ? Icons.play_circle_fill
-                      : Icons.play_circle_outline,
+                  isActive ? Icons.play_circle_fill : Icons.play_circle_outline,
                   color: isActive ? AppColors.goldAccent : null,
                 ),
                 title: Text(l['title']?.toString() ?? 'محاضرة ${i + 1}'),
@@ -507,8 +539,7 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final appBarBg =
-        isDark ? AppColors.darkCardBg : AppColors.lightEmeraldDark;
+    final appBarBg = isDark ? AppColors.darkCardBg : AppColors.lightEmeraldDark;
 
     return PopScope(
       canPop: !_full,
@@ -526,9 +557,13 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
             : AppBar(
                 backgroundColor: appBarBg,
                 foregroundColor: Colors.white,
-                title: Text(widget.subjectTitle,
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold)),
+                title: Text(
+                  widget.subjectTitle,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
         body: SafeArea(
           child: LayoutBuilder(

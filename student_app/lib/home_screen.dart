@@ -71,40 +71,40 @@ class _HomeScreenState extends State<HomeScreen> {
 
         if (user.userMetadata != null) {
           final meta = user.userMetadata!;
-          if (meta['full_name'] != null &&
-              meta['full_name'].toString().trim().isNotEmpty) {
-            foundName = meta['full_name'].toString().trim();
-          } else if (meta['name'] != null &&
-              meta['name'].toString().trim().isNotEmpty) {
-            foundName = meta['name'].toString().trim();
+          final rawName = meta['full_name'] ?? meta['name'];
+          if (rawName != null && rawName.toString().trim().isNotEmpty) {
+            foundName = rawName.toString().trim();
           }
         }
 
-        if (foundName.isEmpty) {
-          final profile = await supabase
-              .from('profiles')
-              .select()
-              .eq('id', user.id)
-              .maybeSingle();
+        if (foundName.isEmpty || double.tryParse(foundName) != null) {
+          try {
+            final profile = await supabase
+                .from('profiles')
+                .select()
+                .eq('id', user.id)
+                .maybeSingle();
 
-          if (profile != null) {
-            if (profile['full_name'] != null &&
-                profile['full_name'].toString().trim().isNotEmpty) {
-              foundName = profile['full_name'].toString().trim();
-            } else if (profile['name'] != null &&
-                profile['name'].toString().trim().isNotEmpty) {
-              foundName = profile['name'].toString().trim();
+            if (profile != null) {
+              final pName = profile['full_name'] ?? profile['name'];
+              if (pName != null && pName.toString().trim().isNotEmpty) {
+                foundName = pName.toString().trim();
+              }
             }
+          } catch (_) {}
+        }
+
+        if (foundName.isEmpty || double.tryParse(foundName) != null) {
+          if (user.email != null) {
+            foundName = user.email!.split('@').first;
           }
         }
 
-        if (foundName.isEmpty && user.email != null) {
-          foundName = user.email!.split('@').first;
+        if (foundName.isEmpty || double.tryParse(foundName) != null) {
+          foundName = 'دكتور المستقبل';
         }
 
-        if (foundName.isNotEmpty) {
-          _studentName = foundName;
-        }
+        _studentName = foundName;
 
         final subscriptions = await supabase
             .from('student_subscriptions')
@@ -160,8 +160,24 @@ class _HomeScreenState extends State<HomeScreen> {
 
   int get _lastWatchDurationSeconds {
     final raw = _lastWatchedLecture?['total_duration_seconds'];
-    if (raw is num) return raw.toInt().clamp(0, 1 << 30);
-    return int.tryParse('$raw') ?? 0;
+    int total = 0;
+    if (raw is num) {
+      total = raw.toInt().clamp(0, 1 << 30);
+    } else {
+      total = int.tryParse('$raw') ?? 0;
+    }
+
+    // في حال لم تكن المدة الكلية محفوظة بالثواني، نحسبها من دقائق المحاضرة (duration_minutes)
+    if (total <= 0) {
+      final minsRaw = _lastLectureMap?['duration_minutes'];
+      final mins = minsRaw is num
+          ? minsRaw.toInt()
+          : (int.tryParse('$minsRaw') ?? 0);
+      if (mins > 0) {
+        total = mins * 60;
+      }
+    }
+    return total;
   }
 
   double get _lastWatchProgressFraction {
@@ -185,9 +201,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final total = _lastWatchDurationSeconds;
     if (pos <= 0 && total <= 0) return 'متابعة من حيث توقفت';
     if (total > 0) {
-      return 'توقفت عند ${_formatWatchClock(pos)} من ${_formatWatchClock(total)}';
+      return 'توقفت عند الدقيقة ${_formatWatchClock(pos)} من أصل ${_formatWatchClock(total)}';
     }
-    return 'توقفت عند ${_formatWatchClock(pos)}';
+    return 'توقفت عند الدقيقة ${_formatWatchClock(pos)}';
   }
 
   Future<void> _openLastWatched() async {
@@ -198,11 +214,11 @@ class _HomeScreenState extends State<HomeScreen> {
     final allRaw = progress['allLectures'];
     final allLectures = allRaw is List
         ? allRaw
-            .whereType<Map>()
-            .map((e) => Map<String, dynamic>.from(e))
-            .toList()
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList()
         : <Map<String, dynamic>>[lecture];
-    final startAt = (progress['position_seconds'] as num?)?.toInt();
+    final startAt = _lastWatchPositionSeconds;
 
     final subjectId = lecture['subject_id']?.toString();
     if (subjectId != null && subjectId.isNotEmpty) {
@@ -652,16 +668,13 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: appBarColor,
         elevation: 0,
         centerTitle: true,
-        title: Image.asset(
-          'assets/logo_horizontal.png',
-          height: 32,
-          errorBuilder: (_, __, ___) => const Text(
-            'أكاديمية فVault',
-            style: TextStyle(
-              color: goldAccent,
-              fontWeight: FontWeight.bold,
-              fontSize: 20,
-            ),
+        title: const Text(
+          'أكاديمية MEDNERD',
+          style: TextStyle(
+            color: goldAccent,
+            fontWeight: FontWeight.bold,
+            fontSize: 19,
+            letterSpacing: 0.8,
           ),
         ),
         leading: IconButton(
@@ -674,9 +687,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Icons.notifications_none_rounded,
               color: goldAccent,
             ),
-            onPressed: () {
-              // Notifications logic
-            },
+            onPressed: () {},
           ),
         ],
       ),
@@ -784,6 +795,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildContinueWatching(bool isDark) {
     if (_lastWatchedLecture == null) return const SizedBox.shrink();
 
+    final posSec = _lastWatchPositionSeconds;
+    final totalSec = _lastWatchDurationSeconds;
+    final fraction = _lastWatchProgressFraction;
+    final percentText = totalSec > 0 ? '${(fraction * 100).round()}%' : '';
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 25, 20, 0),
       child: Column(
@@ -798,11 +814,16 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           InkWell(
             onTap: _openLastWatched,
+            borderRadius: BorderRadius.circular(18),
             child: Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: isDark ? darkCardBg : Colors.white,
                 borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: (isDark ? darkGoldBorder : lightGoldBorder)
+                      .withOpacity(0.25),
+                ),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(0.05),
@@ -811,59 +832,142 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ],
               ),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Stack(
-                    alignment: Alignment.center,
+                  Row(
                     children: [
                       Container(
-                        width: 100,
-                        height: 60,
+                        width: 64,
+                        height: 64,
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          image: const DecorationImage(
-                            image: AssetImage('assets/lecture_placeholder.png'),
-                            fit: BoxFit.cover,
+                          color: isDark
+                              ? darkCardSurface
+                              : lightEmeraldDark.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Center(
+                          child: CircleAvatar(
+                            radius: 18,
+                            backgroundColor: lightEmeraldDark,
+                            child: Icon(
+                              Icons.play_arrow_rounded,
+                              color: goldAccent,
+                              size: 24,
+                            ),
                           ),
                         ),
                       ),
-                      const CircleAvatar(
-                        radius: 15,
-                        backgroundColor: Colors.black45,
-                        child: Icon(
-                          Icons.play_arrow_rounded,
-                          color: Colors.white,
-                          size: 20,
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _lastLectureTitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14.5,
+                                color: isDark ? Colors.white : lightEmeraldDark,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              _lastLectureSubjectTitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: isDark
+                                    ? Colors.white70
+                                    : Colors.grey.shade600,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: goldAccent.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.timer_outlined,
+                                    size: 14,
+                                    color: Color(0xFFB38728),
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Flexible(
+                                    child: Text(
+                                      _lastWatchProgressLabel,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: isDark
+                                            ? goldAccent
+                                            : lightEmeraldDark,
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        color: Colors.grey,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Text(
+                        _formatWatchClock(posSec),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? goldAccent : lightEmeraldDark,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: LinearProgressIndicator(
+                            value: totalSec > 0 ? fraction : 0.15,
+                            minHeight: 6,
+                            backgroundColor: Colors.grey.withOpacity(0.2),
+                            valueColor: const AlwaysStoppedAnimation<Color>(
+                              goldAccent,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        totalSec > 0
+                            ? '${_formatWatchClock(totalSec)} ($percentText)'
+                            : 'قيد المشاهدة',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.white70 : Colors.grey.shade600,
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(width: 15),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _lastLectureTitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _lastLectureSubjectTitle,
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right_rounded, color: Colors.grey),
                 ],
               ),
             ),
@@ -906,7 +1010,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             universityName: uni['name']?.toString() ?? '',
                           ),
                         ),
-                      );
+                      ).then((_) => _loadUserData());
                     },
                     child: Container(
                       width: 120,
@@ -1069,7 +1173,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           professorName: course['professor_name']?.toString(),
                         ),
                       ),
-                    );
+                    ).then((_) => _loadUserData());
                   },
                   child: Container(
                     decoration: BoxDecoration(
@@ -1170,7 +1274,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       MaterialPageRoute(
                         builder: (_) => const MyCoursesScreen(),
                       ),
-                    );
+                    ).then((_) => _loadUserData());
                   },
                 ),
                 _buildDrawerItem(
@@ -1184,7 +1288,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       MaterialPageRoute(
                         builder: (_) => const FavoritesScreen(),
                       ),
-                    );
+                    ).then((_) => _loadUserData());
                   },
                 ),
                 _buildDrawerItem(
@@ -1198,7 +1302,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       MaterialPageRoute(
                         builder: (_) => const DownloadsScreen(),
                       ),
-                    );
+                    ).then((_) => _loadUserData());
                   },
                 ),
                 const Divider(height: 40, indent: 20, endIndent: 20),
@@ -1211,7 +1315,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_) => const ProfileScreen()),
-                    );
+                    ).then((_) => _loadUserData());
                   },
                 ),
                 _buildDrawerItem(
