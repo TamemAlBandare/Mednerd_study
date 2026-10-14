@@ -1,1 +1,0 @@
-# Mednerd_study
