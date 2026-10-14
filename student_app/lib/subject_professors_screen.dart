@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'main.dart';
 import 'device_service.dart';
 import 'backend_errors.dart';
@@ -16,7 +17,8 @@ class SubjectProfessorsScreen extends StatefulWidget {
   });
 
   @override
-  State<SubjectProfessorsScreen> createState() => _SubjectProfessorsScreenState();
+  State<SubjectProfessorsScreen> createState() =>
+      _SubjectProfessorsScreenState();
 }
 
 class _SubjectProfessorsScreenState extends State<SubjectProfessorsScreen> {
@@ -52,7 +54,6 @@ class _SubjectProfessorsScreenState extends State<SubjectProfessorsScreen> {
     try {
       final user = supabase.auth.currentUser;
 
-      // 1. جلب الاشتراكات الفعالة لهذا الطالب في هذه المادة تحديداً
       _enrolledProfIds.clear();
       if (user != null) {
         final subs = await supabase
@@ -69,7 +70,6 @@ class _SubjectProfessorsScreenState extends State<SubjectProfessorsScreen> {
         }
       }
 
-      // 2. جلب جميع الدكاترة المرتبطين بهذه المادة من الجدول الوسيط
       final data = await supabase
           .from('subject_professors')
           .select('professor_id, professors(id, name, avatar_url, bio)')
@@ -98,14 +98,13 @@ class _SubjectProfessorsScreenState extends State<SubjectProfessorsScreen> {
     }
   }
 
-  // نافذة تفعيل الكود مباشرة من هذه الشاشة
   void _showActivationDialog(bool isDark) {
     final TextEditingController codeController = TextEditingController();
     String? dialogError;
     bool isVerifying = false;
 
     final dialogBg = isDark ? darkCardBg : lightEmeraldDark;
-    final dialogBorder = goldBorder;
+    const dialogBorder = goldBorder;
 
     showGeneralDialog(
       context: context,
@@ -129,7 +128,9 @@ class _SubjectProfessorsScreenState extends State<SubjectProfessorsScreen> {
                       color: dialogBg,
                       borderRadius: BorderRadius.circular(24),
                       border: Border.all(
-                        color: dialogError != null ? const Color(0xFFEF4444) : dialogBorder.withOpacity(0.9),
+                        color: dialogError != null
+                            ? const Color(0xFFEF4444)
+                            : dialogBorder.withOpacity(0.9),
                         width: 1.5,
                       ),
                       boxShadow: [
@@ -150,40 +151,62 @@ class _SubjectProfessorsScreenState extends State<SubjectProfessorsScreen> {
                             height: 54,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: isDark ? darkCardSurface : lightEmeraldLight,
-                              border: Border.all(color: dialogBorder, width: 1.5),
+                              color: isDark
+                                  ? darkCardSurface
+                                  : lightEmeraldLight,
+                              border: Border.all(
+                                color: dialogBorder,
+                                width: 1.5,
+                              ),
                             ),
-                            child: const Icon(Icons.vpn_key_rounded, color: goldAccent, size: 26),
+                            child: const Icon(
+                              Icons.vpn_key_rounded,
+                              color: goldAccent,
+                              size: 26,
+                            ),
                           ),
                           const SizedBox(height: 16),
                           const Text(
                             'تفعيل كود المقرر',
-                            style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'أدخل كود الاشتراك لتفعيل محاضرات المادة مع الدكتور.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: Colors.white.withOpacity(0.75), fontSize: 12),
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 17,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           const SizedBox(height: 18),
                           Container(
                             decoration: BoxDecoration(
-                              color: isDark ? darkInputBg : const Color(0xFF08221E),
+                              color: isDark
+                                  ? darkInputBg
+                                  : const Color(0xFF08221E),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: dialogError != null ? const Color(0xFFEF4444) : dialogBorder,
+                                color: dialogError != null
+                                    ? const Color(0xFFEF4444)
+                                    : dialogBorder,
                               ),
                             ),
                             child: TextField(
                               controller: codeController,
                               textAlign: TextAlign.center,
-                              style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 1.5),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1.5,
+                              ),
                               decoration: InputDecoration(
                                 hintText: 'XXX-XXX-XX-XXXX',
-                                hintStyle: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 13),
+                                hintStyle: TextStyle(
+                                  color: Colors.white.withOpacity(0.35),
+                                  fontSize: 13,
+                                ),
                                 border: InputBorder.none,
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 12,
+                                ),
                               ),
                             ),
                           ),
@@ -191,7 +214,11 @@ class _SubjectProfessorsScreenState extends State<SubjectProfessorsScreen> {
                             const SizedBox(height: 8),
                             Text(
                               dialogError!,
-                              style: const TextStyle(color: Color(0xFFEF4444), fontSize: 11.5, fontWeight: FontWeight.w600),
+                              style: const TextStyle(
+                                color: Color(0xFFEF4444),
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ],
                           const SizedBox(height: 20),
@@ -199,11 +226,17 @@ class _SubjectProfessorsScreenState extends State<SubjectProfessorsScreen> {
                             children: [
                               Expanded(
                                 child: OutlinedButton(
-                                  onPressed: isVerifying ? null : () => Navigator.pop(dialogContext),
+                                  onPressed: isVerifying
+                                      ? null
+                                      : () => Navigator.pop(dialogContext),
                                   style: OutlinedButton.styleFrom(
                                     foregroundColor: Colors.white70,
-                                    side: BorderSide(color: dialogBorder.withOpacity(0.5)),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                    side: BorderSide(
+                                      color: dialogBorder.withOpacity(0.5),
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
                                   ),
                                   child: const Text('إلغاء'),
                                 ),
@@ -215,9 +248,13 @@ class _SubjectProfessorsScreenState extends State<SubjectProfessorsScreen> {
                                   onPressed: isVerifying
                                       ? null
                                       : () async {
-                                          final code = codeController.text.trim();
+                                          final code = codeController.text
+                                              .trim();
                                           if (code.isEmpty) {
-                                            setDialogState(() => dialogError = 'يرجى إدخال الكود');
+                                            setDialogState(
+                                              () => dialogError =
+                                                  'يرجى إدخال الكود',
+                                            );
                                             return;
                                           }
                                           setDialogState(() {
@@ -226,35 +263,56 @@ class _SubjectProfessorsScreenState extends State<SubjectProfessorsScreen> {
                                           });
 
                                           try {
-                                            final user = supabase.auth.currentUser;
+                                            final user =
+                                                supabase.auth.currentUser;
                                             if (user == null) {
                                               setDialogState(() {
                                                 isVerifying = false;
-                                                dialogError = 'يجب تسجيل الدخول أولاً';
+                                                dialogError =
+                                                    'يجب تسجيل الدخول أولاً';
                                               });
                                               return;
                                             }
 
-                                            final fingerprint = await DeviceService.getFingerprint();
-                                            final result = Map<String, dynamic>.from(await supabase.rpc('activate_code', params: {
-                                              'p_code': code,
-                                              'p_fingerprint': fingerprint,
-                                            }) as Map);
+                                            final fingerprint =
+                                                await DeviceService.getFingerprint();
+                                            final result =
+                                                Map<String, dynamic>.from(
+                                                  await supabase.rpc(
+                                                    'activate_code',
+                                                    params: {
+                                                      'p_code': code,
+                                                      'p_fingerprint':
+                                                          fingerprint,
+                                                    },
+                                                  ) as Map,
+                                                );
                                             if (result['ok'] != true) {
                                               setDialogState(() {
                                                 isVerifying = false;
-                                                dialogError = activationErrorMessage(result['error']?.toString());
+                                                dialogError =
+                                                    activationErrorMessage(
+                                                      result['error']
+                                                          ?.toString(),
+                                                    );
                                               });
                                               return;
                                             }
 
                                             if (mounted) {
                                               Navigator.pop(dialogContext);
-                                              ScaffoldMessenger.of(context).showSnackBar(
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
                                                 const SnackBar(
-                                                  backgroundColor: Color(0xFF10B981),
-                                                  behavior: SnackBarBehavior.floating,
-                                                  content: Text('تم تفعيل الاشتراك بنجاح!'),
+                                                  backgroundColor: Color(
+                                                    0xFF10B981,
+                                                  ),
+                                                  behavior:
+                                                      SnackBarBehavior.floating,
+                                                  content: Text(
+                                                    'تم تفعيل الاشتراك بنجاح',
+                                                  ),
                                                 ),
                                               );
                                               _fetchProfessorsAndSubscriptions();
@@ -262,7 +320,12 @@ class _SubjectProfessorsScreenState extends State<SubjectProfessorsScreen> {
                                           } on PostgrestException catch (e) {
                                             setDialogState(() {
                                               isVerifying = false;
-                                              dialogError = activationErrorMessage(e.code == '23505' ? 'already_subscribed' : e.message);
+                                              dialogError =
+                                                  activationErrorMessage(
+                                                    e.code == '23505'
+                                                        ? 'already_subscribed'
+                                                        : e.message,
+                                                  );
                                             });
                                           } catch (e) {
                                             setDialogState(() {
@@ -274,11 +337,25 @@ class _SubjectProfessorsScreenState extends State<SubjectProfessorsScreen> {
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: goldAccent,
                                     foregroundColor: Colors.black,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
                                   ),
                                   child: isVerifying
-                                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                                      : const Text('تفعيل الكود', style: TextStyle(fontWeight: FontWeight.bold)),
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.black,
+                                          ),
+                                        )
+                                      : const Text(
+                                          'تفعيل',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
                                 ),
                               ),
                             ],
@@ -309,28 +386,30 @@ class _SubjectProfessorsScreenState extends State<SubjectProfessorsScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 56,
-              height: 56,
+              width: 54,
+              height: 54,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: goldAccent.withOpacity(0.15),
                 border: Border.all(color: goldBorder, width: 1.2),
               ),
-              child: const Icon(Icons.lock_rounded, color: goldAccent, size: 28),
+              child: const Icon(
+                Icons.lock_rounded,
+                color: goldAccent,
+                size: 26,
+              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             Text(
-              'المقرر غير مفعل مع د. $profName',
+              'المقرر غير مفعل (د. $profName)',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              'لا يمكنك استعراض المحاضرات والملخصات أو تفاصيلها حتى يتم تفعيل كود الاشتراك الخاص بهذا المدرس.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white.withOpacity(0.75), fontSize: 12.5, height: 1.4),
-            ),
-            const SizedBox(height: 22),
+            const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
@@ -342,10 +421,15 @@ class _SubjectProfessorsScreenState extends State<SubjectProfessorsScreen> {
                   backgroundColor: goldAccent,
                   foregroundColor: Colors.black,
                   padding: const EdgeInsets.symmetric(vertical: 13),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 icon: const Icon(Icons.vpn_key_rounded, size: 18),
-                label: const Text('إدخال كود التفعيل الآن', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                label: const Text(
+                  'تفعيل الكود',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
               ),
             ),
           ],
@@ -379,17 +463,25 @@ class _SubjectProfessorsScreenState extends State<SubjectProfessorsScreen> {
           ),
         ),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: goldAccent, size: 20),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: goldAccent,
+            size: 20,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
           IconButton(
-            tooltip: 'تفعيل كود مقرر',
-            icon: const Icon(Icons.vpn_key_rounded, color: goldAccent, size: 20),
+            tooltip: 'تفعيل كود',
+            icon: const Icon(
+              Icons.vpn_key_rounded,
+              color: goldAccent,
+              size: 20,
+            ),
             onPressed: () => _showActivationDialog(isDark),
           ),
           IconButton(
-            tooltip: isDark ? 'التحويل للوضع المضيء' : 'التحويل للوضع الليلي',
+            tooltip: isDark ? 'الوضع النهاري' : 'الوضع الليلي',
             icon: Icon(
               isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
               color: goldAccent,
@@ -402,187 +494,224 @@ class _SubjectProfessorsScreenState extends State<SubjectProfessorsScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: goldAccent))
           : _errorMessage != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.error_outline_rounded, color: Color(0xFFEF4444), size: 44),
-                        const SizedBox(height: 12),
-                        Text(_errorMessage!, textAlign: TextAlign.center, style: TextStyle(color: textColor, fontSize: 13)),
-                        const SizedBox(height: 16),
-                        ElevatedButton(
-                          onPressed: _fetchProfessorsAndSubscriptions,
-                          style: ElevatedButton.styleFrom(backgroundColor: goldAccent, foregroundColor: Colors.black),
-                          child: const Text('إعادة المحاولة'),
-                        ),
-                      ],
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.error_outline_rounded,
+                      color: Color(0xFFEF4444),
+                      size: 44,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      _errorMessage!,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: textColor, fontSize: 13),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: _fetchProfessorsAndSubscriptions,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: goldAccent,
+                        foregroundColor: Colors.black,
+                      ),
+                      child: const Text('إعادة المحاولة'),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : _professors.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.person_off_outlined,
+                    color: goldAccent.withOpacity(0.6),
+                    size: 54,
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'لا يوجد أساتذة مدرجون حالياً',
+                    style: TextStyle(
+                      color: textColor,
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                )
-              : _professors.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.person_off_outlined, color: goldAccent.withOpacity(0.6), size: 54),
-                          const SizedBox(height: 14),
-                          Text('لم يتم إدراج أساتذة لهذه المادة بعد', style: TextStyle(color: textColor, fontSize: 15, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                    )
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'مدرّسو المقرر',
-                                style: TextStyle(color: textColor, fontSize: 16.5, fontWeight: FontWeight.bold),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'يمكنك استعراض أساتذة المادة. للدخول إلى المحاضرات والمعلومات يجب أن يكون الاشتراك مفعلاً.',
-                                style: TextStyle(color: subtitleColor, fontSize: 12),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Expanded(
-                          child: GridView.builder(
-                            padding: const EdgeInsets.all(20),
-                            itemCount: _professors.length,
-                            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                              maxCrossAxisExtent: 150,
-                              mainAxisSpacing: 22,
-                              crossAxisSpacing: 18,
-                              childAspectRatio: 0.76,
-                            ),
-                            itemBuilder: (context, index) {
-                              final prof = _professors[index];
-                              final profId = prof['id'].toString();
-                              final avatarUrl = prof['avatar_url']?.toString();
-                              final profName = prof['name'] ?? 'دكتور المقرر';
-                              final bool isEnrolled = _enrolledProfIds.contains(profId);
-
-                              return InkWell(
-                                onTap: () {
-                                  if (isEnrolled) {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => CourseDetailsScreen(
-                                          subjectId: widget.subjectId,
-                                          subjectTitle: widget.subjectName,
-                                          professorId: prof['id'],
-                                          professorName: profName,
-                                        ),
-                                      ),
-                                    );
-                                  } else {
-                                    _showNotEnrolledSheet(profName, isDark);
-                                  }
-                                },
-                                borderRadius: BorderRadius.circular(16),
-                                child: Column(
-                                  children: [
-                                    Stack(
-                                      alignment: Alignment.bottomRight,
-                                      children: [
-                                        Container(
-                                          width: 86,
-                                          height: 86,
-                                          padding: const EdgeInsets.all(3.5),
-                                          decoration: BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            gradient: LinearGradient(
-                                              colors: isEnrolled
-                                                  ? const [Color(0xFF10B981), Color(0xFF059669)]
-                                                  : [goldAccent, goldBorder.withOpacity(0.4)],
-                                              begin: Alignment.topLeft,
-                                              end: Alignment.bottomRight,
-                                            ),
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: Colors.black.withOpacity(0.2),
-                                                blurRadius: 8,
-                                                offset: const Offset(0, 4),
-                                              ),
-                                            ],
-                                          ),
-                                          child: Container(
-                                            decoration: BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              color: isDark ? darkCardSurface : lightEmeraldDark,
-                                            ),
-                                            child: ClipOval(
-                                              child: (avatarUrl != null && avatarUrl.trim().isNotEmpty)
-                                                  ? Image.network(
-                                                      avatarUrl,
-                                                      fit: BoxFit.cover,
-                                                      errorBuilder: (_, __, ___) => const Icon(
-                                                        Icons.person_rounded,
-                                                        color: goldAccent,
-                                                        size: 44,
-                                                      ),
-                                                    )
-                                                  : const Icon(
-                                                      Icons.person_rounded,
-                                                      color: goldAccent,
-                                                      size: 44,
-                                                    ),
-                                            ),
-                                          ),
-                                        ),
-                                        Container(
-                                          padding: const EdgeInsets.all(4.5),
-                                          decoration: BoxDecoration(
-                                            color: isEnrolled ? const Color(0xFF10B981) : const Color(0xFF1E2B40),
-                                            shape: BoxShape.circle,
-                                            border: Border.all(color: Colors.white, width: 1.5),
-                                          ),
-                                          child: Icon(
-                                            isEnrolled ? Icons.check_rounded : Icons.lock_outline_rounded,
-                                            color: Colors.white,
-                                            size: 13,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 10),
-                                    Text(
-                                      'د. $profName',
-                                      textAlign: TextAlign.center,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        color: textColor,
-                                        fontSize: 12.5,
-                                        fontWeight: FontWeight.bold,
-                                        height: 1.25,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      isEnrolled ? 'مفعل لديك' : 'غير مشترك',
-                                      style: TextStyle(
-                                        color: isEnrolled ? const Color(0xFF10B981) : subtitleColor,
-                                        fontSize: 10.5,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ],
+                ],
+              ),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
+                  child: Text(
+                    'مدرّسو المقرر',
+                    style: TextStyle(
+                      color: textColor,
+                      fontSize: 16.5,
+                      fontWeight: FontWeight.bold,
                     ),
+                  ),
+                ),
+                Expanded(
+                  child: GridView.builder(
+                    padding: const EdgeInsets.all(20),
+                    itemCount: _professors.length,
+                    gridDelegate:
+                        const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 150,
+                          mainAxisSpacing: 22,
+                          crossAxisSpacing: 18,
+                          childAspectRatio: 0.76,
+                        ),
+                    itemBuilder: (context, index) {
+                      final prof = _professors[index];
+                      final profId = prof['id'].toString();
+                      final avatarUrl = prof['avatar_url']?.toString();
+                      final profName = prof['name'] ?? 'دكتور المقرر';
+                      final bool isEnrolled = _enrolledProfIds.contains(profId);
+
+                      return InkWell(
+                        onTap: () {
+                          if (isEnrolled) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => CourseDetailsScreen(
+                                  subjectId: widget.subjectId,
+                                  subjectTitle: widget.subjectName,
+                                  professorId: prof['id']?.toString(),
+                                  professorName: profName,
+                                ),
+                              ),
+                            );
+                          } else {
+                            _showNotEnrolledSheet(profName, isDark);
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(16),
+                        child: Column(
+                          children: [
+                            Stack(
+                              alignment: Alignment.bottomRight,
+                              children: [
+                                Container(
+                                  width: 86,
+                                  height: 86,
+                                  padding: const EdgeInsets.all(3.5),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    gradient: LinearGradient(
+                                      colors: isEnrolled
+                                          ? const [
+                                              Color(0xFF10B981),
+                                              Color(0xFF059669),
+                                            ]
+                                          : [
+                                              goldAccent,
+                                              goldBorder.withOpacity(0.4),
+                                            ],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.2),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: isDark
+                                          ? darkCardSurface
+                                          : lightEmeraldDark,
+                                    ),
+                                    child: ClipOval(
+                                      child:
+                                          (avatarUrl != null &&
+                                              avatarUrl.trim().isNotEmpty)
+                                          ? Image.network(
+                                              avatarUrl,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (_, __, ___) =>
+                                                  const Icon(
+                                                    Icons.person_rounded,
+                                                    color: goldAccent,
+                                                    size: 44,
+                                                  ),
+                                            )
+                                          : const Icon(
+                                              Icons.person_rounded,
+                                              color: goldAccent,
+                                              size: 44,
+                                            ),
+                                    ),
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.all(4.5),
+                                  decoration: BoxDecoration(
+                                    color: isEnrolled
+                                        ? const Color(0xFF10B981)
+                                        : const Color(0xFF1E2B40),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.white,
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  child: Icon(
+                                    isEnrolled
+                                        ? Icons.check_rounded
+                                        : Icons.lock_outline_rounded,
+                                    color: Colors.white,
+                                    size: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              'د. $profName',
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: textColor,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.bold,
+                                height: 1.25,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              isEnrolled ? 'مفعل' : 'مغلق',
+                              style: TextStyle(
+                                color: isEnrolled
+                                    ? const Color(0xFF10B981)
+                                    : subtitleColor,
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
     );
   }
 }

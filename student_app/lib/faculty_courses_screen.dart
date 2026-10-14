@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'main.dart';
 import 'subject_professors_screen.dart';
 import 'backend_errors.dart';
@@ -48,7 +49,6 @@ class _FacultyCoursesScreenState extends State<FacultyCoursesScreen> {
     });
 
     try {
-      // جلب المقررات التابعة للكلية المحددة فقط
       final data = await supabase
           .from('subjects')
           .select('id, name, code_prefix')
@@ -106,12 +106,16 @@ class _FacultyCoursesScreenState extends State<FacultyCoursesScreen> {
           ],
         ),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: goldAccent, size: 20),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: goldAccent,
+            size: 20,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
           IconButton(
-            tooltip: isDark ? 'التحويل للوضع المضيء' : 'التحويل للوضع الليلي',
+            tooltip: isDark ? 'الوضع النهاري' : 'الوضع الليلي',
             icon: Icon(
               isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
               color: goldAccent,
@@ -124,136 +128,143 @@ class _FacultyCoursesScreenState extends State<FacultyCoursesScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: goldAccent))
           : _errorMessage != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.error_outline_rounded, color: Color(0xFFEF4444), size: 44),
-                        const SizedBox(height: 12),
-                        Text(
-                          _errorMessage!,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: textColor, fontSize: 13),
-                        ),
-                        const SizedBox(height: 16),
-                        ElevatedButton(
-                          onPressed: _fetchFacultyCourses,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: goldAccent,
-                            foregroundColor: Colors.black,
-                          ),
-                          child: const Text('إعادة المحاولة'),
-                        ),
-                      ],
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.error_outline_rounded,
+                      color: Color(0xFFEF4444),
+                      size: 44,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      _errorMessage!,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: textColor, fontSize: 13),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: _fetchFacultyCourses,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: goldAccent,
+                        foregroundColor: Colors.black,
+                      ),
+                      child: const Text('إعادة المحاولة'),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : _courses.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    widget.facultyIcon,
+                    color: goldAccent.withOpacity(0.6),
+                    size: 54,
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'لا توجد مقررات مدرجة حالياً',
+                    style: TextStyle(
+                      color: textColor,
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                )
-              : _courses.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(widget.facultyIcon, color: goldAccent.withOpacity(0.6), size: 54),
-                          const SizedBox(height: 14),
-                          Text(
-                            'لا توجد مقررات مدرجة حالياً في هذه الكلية',
-                            style: TextStyle(color: textColor, fontSize: 15, fontWeight: FontWeight.bold),
+                ],
+              ),
+            )
+          : RefreshIndicator(
+              color: goldAccent,
+              onRefresh: _fetchFacultyCourses,
+              child: ListView.separated(
+                padding: const EdgeInsets.all(18),
+                itemCount: _courses.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                itemBuilder: (context, index) {
+                  final course = _courses[index];
+                  final courseId = course['id'].toString();
+                  final courseName = course['name'] ?? 'مقرر دراسي';
+
+                  return InkWell(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => SubjectProfessorsScreen(
+                            subjectId: courseId,
+                            subjectName: courseName,
+                          ),
+                        ),
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 16,
+                      ),
+                      decoration: BoxDecoration(
+                        color: cardBg,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: goldBorder.withOpacity(0.4),
+                          width: 1.2,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.15),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
                           ),
                         ],
                       ),
-                    )
-                  : RefreshIndicator(
-                      color: goldAccent,
-                      onRefresh: _fetchFacultyCourses,
-                      child: ListView.separated(
-                        padding: const EdgeInsets.all(18),
-                        itemCount: _courses.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 12),
-                        itemBuilder: (context, index) {
-                          final course = _courses[index];
-                          final courseId = course['id'].toString();
-                          final courseName = course['name'] ?? 'مقرر دراسي';
-
-                          return InkWell(
-                            onTap: () {
-                              // الانتقال مباشرة إلى شاشة اختيار الدكتور
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => SubjectProfessorsScreen(
-                                    subjectId: courseId,
-                                    subjectName: courseName,
-                                  ),
-                                ),
-                              );
-                            },
-                            borderRadius: BorderRadius.circular(16),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                              decoration: BoxDecoration(
-                                color: cardBg,
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: goldBorder.withOpacity(0.4),
-                                  width: 1.2,
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.15),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 3),
-                                  ),
-                                ],
-                              ),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(10),
-                                    decoration: BoxDecoration(
-                                      color: cardSurface,
-                                      shape: BoxShape.circle,
-                                      border: Border.all(color: goldBorder.withOpacity(0.6)),
-                                    ),
-                                    child: const Icon(Icons.menu_book_rounded, color: goldAccent, size: 20),
-                                  ),
-                                  const SizedBox(width: 14),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          courseName,
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          'اضغط لاختيار المدرس وعرض المحاضرات',
-                                          style: TextStyle(
-                                            color: Colors.white.withOpacity(0.6),
-                                            fontSize: 11.5,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const Icon(
-                                    Icons.arrow_forward_ios_rounded,
-                                    color: goldAccent,
-                                    size: 16,
-                                  ),
-                                ],
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: cardSurface,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: goldBorder.withOpacity(0.6),
                               ),
                             ),
-                          );
-                        },
+                            child: const Icon(
+                              Icons.menu_book_rounded,
+                              color: goldAccent,
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Text(
+                              courseName,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          const Icon(
+                            Icons.arrow_forward_ios_rounded,
+                            color: goldAccent,
+                            size: 16,
+                          ),
+                        ],
                       ),
                     ),
+                  );
+                },
+              ),
+            ),
     );
   }
 }

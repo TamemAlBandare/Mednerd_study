@@ -10,6 +10,7 @@ import 'downloads_screen.dart';
 import 'my_courses_screen.dart';
 import 'profile_screen.dart';
 import 'favorites_screen.dart';
+import 'quiz_screen.dart';
 import 'vault_security_service.dart';
 import 'watch_progress_service.dart';
 import 'university_faculties_screen.dart';
@@ -101,7 +102,7 @@ class _HomeScreenState extends State<HomeScreen> {
         }
 
         if (foundName.isEmpty || double.tryParse(foundName) != null) {
-          foundName = 'دكتور المستقبل';
+          foundName = 'طالب الأكاديمية';
         }
 
         _studentName = foundName;
@@ -167,7 +168,6 @@ class _HomeScreenState extends State<HomeScreen> {
       total = int.tryParse('$raw') ?? 0;
     }
 
-    // في حال لم تكن المدة الكلية محفوظة بالثواني، نحسبها من دقائق المحاضرة (duration_minutes)
     if (total <= 0) {
       final minsRaw = _lastLectureMap?['duration_minutes'];
       final mins = minsRaw is num
@@ -199,11 +199,11 @@ class _HomeScreenState extends State<HomeScreen> {
   String get _lastWatchProgressLabel {
     final pos = _lastWatchPositionSeconds;
     final total = _lastWatchDurationSeconds;
-    if (pos <= 0 && total <= 0) return 'متابعة من حيث توقفت';
+    if (pos <= 0 && total <= 0) return 'متابعة التشغيل';
     if (total > 0) {
-      return 'توقفت عند الدقيقة ${_formatWatchClock(pos)} من أصل ${_formatWatchClock(total)}';
+      return '${_formatWatchClock(pos)} / ${_formatWatchClock(total)}';
     }
-    return 'توقفت عند الدقيقة ${_formatWatchClock(pos)}';
+    return _formatWatchClock(pos);
   }
 
   Future<void> _openLastWatched() async {
@@ -284,7 +284,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Icon(Icons.support_agent_rounded, color: goldAccent, size: 24),
             SizedBox(width: 10),
             Text(
-              'الدعم الفني ومجتمع الطلاب',
+              'الدعم الفني',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 16,
@@ -294,7 +294,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         content: Text(
-          'للاستفسارات الأكاديمية، فك ارتباط الأجهزة، أو الانضمام لمجتمع الدفعة على تيليجرام وواتساب، يرجى التواصل مع الإدارة المركزية.',
+          'للاستفسارات أو فك ارتباط الأجهزة، يرجى التواصل مع إدارة المنصة.',
           style: TextStyle(
             color: Colors.white.withOpacity(0.8),
             fontSize: 13,
@@ -365,8 +365,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Container(
-                            width: 60,
-                            height: 60,
+                            width: 56,
+                            height: 56,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               gradient: LinearGradient(
@@ -394,29 +394,19 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ? Icons.error_outline_rounded
                                   : Icons.vpn_key_rounded,
                               color: Colors.white,
-                              size: 28,
+                              size: 26,
                             ),
                           ),
-                          const SizedBox(height: 18),
+                          const SizedBox(height: 16),
                           const Text(
-                            'تفعيل اشتراك مقرر',
+                            'تفعيل مقرر جديد',
                             style: TextStyle(
                               color: Colors.white,
-                              fontSize: 18,
+                              fontSize: 17,
                               fontWeight: FontWeight.w800,
                             ),
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'أدخل الرمز لفتح المحاضرات وبنك الأسئلة فوراً.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.8),
-                              fontSize: 13,
-                              height: 1.4,
-                            ),
-                          ),
-                          const SizedBox(height: 22),
+                          const SizedBox(height: 18),
                           Container(
                             decoration: BoxDecoration(
                               color: isDark
@@ -478,7 +468,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             ),
                           ],
-                          const SizedBox(height: 24),
+                          const SizedBox(height: 22),
                           Row(
                             children: [
                               Expanded(
@@ -595,10 +585,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                                 ).showSnackBar(
                                                   SnackBar(
                                                     content: Text(
-                                                      'تم تفعيل $subjectTitle بنجاح!',
+                                                      'تم تفعيل $subjectTitle بنجاح',
                                                     ),
                                                     backgroundColor:
-                                                        Colors.green,
+                                                        const Color(0xFF10B981),
                                                   ),
                                                 );
                                                 _loadUserData();
@@ -606,7 +596,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                             } catch (e) {
                                               setDialogState(() {
                                                 isVerifying = false;
-                                                errorMessage = e.toString();
+                                                errorMessage = friendlyError(e);
                                               });
                                             }
                                           },
@@ -630,7 +620,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                             ),
                                           )
                                         : const Text(
-                                            'تفعيل الآن',
+                                            'تفعيل',
                                             style: TextStyle(
                                               color: Colors.black,
                                               fontWeight: FontWeight.bold,
@@ -683,9 +673,20 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         actions: [
           IconButton(
+            tooltip: isDark ? 'الوضع النهاري' : 'الوضع الليلي',
+            icon: Icon(
+              isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+              color: goldAccent,
+              size: 22,
+            ),
+            onPressed: toggleTheme,
+          ),
+          IconButton(
+            tooltip: 'الإشعارات',
             icon: const Icon(
               Icons.notifications_none_rounded,
               color: goldAccent,
+              size: 22,
             ),
             onPressed: () {},
           ),
@@ -712,7 +713,11 @@ class _HomeScreenState extends State<HomeScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showCourseActivationDialog(isDark),
         backgroundColor: goldAccent,
-        icon: const Icon(Icons.add_moderator_rounded, color: Colors.black87),
+        icon: const Icon(
+          Icons.vpn_key_rounded,
+          color: Colors.black87,
+          size: 20,
+        ),
         label: const Text(
           'تفعيل مقرر',
           style: TextStyle(
@@ -727,12 +732,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildHeader(bool isDark) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 30),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(24, 14, 24, 26),
       decoration: BoxDecoration(
         color: isDark ? darkCardBg : lightEmeraldDark,
         borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(35),
-          bottomRight: Radius.circular(35),
+          bottomLeft: Radius.circular(32),
+          bottomRight: Radius.circular(32),
         ),
       ),
       child: Column(
@@ -742,49 +748,16 @@ class _HomeScreenState extends State<HomeScreen> {
             'أهلاً بك،',
             style: TextStyle(
               color: Colors.white.withOpacity(0.7),
-              fontSize: 14,
+              fontSize: 13.5,
             ),
           ),
           const SizedBox(height: 4),
           Text(
-            _studentName.isNotEmpty ? _studentName : 'أيها الطالب المتميز',
+            _studentName.isNotEmpty ? _studentName : 'طالب الأكاديمية',
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 22,
+              fontSize: 21,
               fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 25),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: isDark ? darkCardSurface : lightEmeraldLight,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: (isDark ? darkGoldBorder : lightGoldBorder).withOpacity(
-                  0.3,
-                ),
-              ),
-            ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.info_outline_rounded,
-                  color: goldAccent,
-                  size: 24,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'اختر جامعتك للوصول إلى المحاضرات والملخصات الخاصة بك.',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.9),
-                      fontSize: 13,
-                      height: 1.4,
-                    ),
-                  ),
-                ),
-              ],
             ),
           ),
         ],
@@ -801,15 +774,15 @@ class _HomeScreenState extends State<HomeScreen> {
     final percentText = totalSec > 0 ? '${(fraction * 100).round()}%' : '';
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 25, 20, 0),
+      padding: const EdgeInsets.fromLTRB(20, 22, 20, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Padding(
-            padding: EdgeInsets.only(right: 4, bottom: 12),
+            padding: EdgeInsets.only(right: 4, bottom: 10),
             child: Text(
               'تابع المشاهدة',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+              style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.bold),
             ),
           ),
           InkWell(
@@ -838,8 +811,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   Row(
                     children: [
                       Container(
-                        width: 64,
-                        height: 64,
+                        width: 58,
+                        height: 58,
                         decoration: BoxDecoration(
                           color: isDark
                               ? darkCardSurface
@@ -848,12 +821,12 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         child: const Center(
                           child: CircleAvatar(
-                            radius: 18,
+                            radius: 17,
                             backgroundColor: lightEmeraldDark,
                             child: Icon(
                               Icons.play_arrow_rounded,
                               color: goldAccent,
-                              size: 24,
+                              size: 22,
                             ),
                           ),
                         ),
@@ -885,41 +858,26 @@ class _HomeScreenState extends State<HomeScreen> {
                                 fontSize: 12,
                               ),
                             ),
-                            const SizedBox(height: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: goldAccent.withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(
-                                    Icons.timer_outlined,
-                                    size: 14,
-                                    color: Color(0xFFB38728),
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.schedule_rounded,
+                                  size: 13.5,
+                                  color: goldAccent,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  _lastWatchProgressLabel,
+                                  style: TextStyle(
+                                    color: isDark
+                                        ? goldAccent
+                                        : lightEmeraldDark,
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.bold,
                                   ),
-                                  const SizedBox(width: 5),
-                                  Flexible(
-                                    child: Text(
-                                      _lastWatchProgressLabel,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        color: isDark
-                                            ? goldAccent
-                                            : lightEmeraldDark,
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
@@ -933,21 +891,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      Text(
-                        _formatWatchClock(posSec),
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: isDark ? goldAccent : lightEmeraldDark,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
                       Expanded(
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(6),
                           child: LinearProgressIndicator(
                             value: totalSec > 0 ? fraction : 0.15,
-                            minHeight: 6,
+                            minHeight: 5,
                             backgroundColor: Colors.grey.withOpacity(0.2),
                             valueColor: const AlwaysStoppedAnimation<Color>(
                               goldAccent,
@@ -955,17 +904,17 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Text(
-                        totalSec > 0
-                            ? '${_formatWatchClock(totalSec)} ($percentText)'
-                            : 'قيد المشاهدة',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: isDark ? Colors.white70 : Colors.grey.shade600,
+                      if (percentText.isNotEmpty) ...[
+                        const SizedBox(width: 10),
+                        Text(
+                          percentText,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? goldAccent : lightEmeraldDark,
+                          ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ],
@@ -978,20 +927,22 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildUniversitySection(bool isDark) {
+    if (_universities.isEmpty) return const SizedBox.shrink();
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(0, 25, 0, 0),
+      padding: const EdgeInsets.fromLTRB(0, 22, 0, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            padding: EdgeInsets.symmetric(horizontal: 24, vertical: 10),
             child: Text(
-              'الجامعات المتاحة',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+              'الجامعات',
+              style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.bold),
             ),
           ),
           SizedBox(
-            height: 140,
+            height: 135,
             child: ListView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               scrollDirection: Axis.horizontal,
@@ -1001,6 +952,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   child: InkWell(
+                    borderRadius: BorderRadius.circular(20),
                     onTap: () {
                       Navigator.push(
                         context,
@@ -1027,19 +979,19 @@ class _HomeScreenState extends State<HomeScreen> {
                         children: [
                           Expanded(
                             child: Padding(
-                              padding: const EdgeInsets.all(15),
+                              padding: const EdgeInsets.all(14),
                               child: uni['logo_url'] != null
                                   ? Image.network(
                                       uni['logo_url'],
                                       errorBuilder: (_, __, ___) => const Icon(
                                         Icons.account_balance_rounded,
-                                        size: 40,
+                                        size: 38,
                                         color: goldAccent,
                                       ),
                                     )
                                   : const Icon(
                                       Icons.account_balance_rounded,
-                                      size: 40,
+                                      size: 38,
                                       color: goldAccent,
                                     ),
                             ),
@@ -1048,7 +1000,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             width: double.infinity,
                             padding: const EdgeInsets.symmetric(
                               vertical: 8,
-                              horizontal: 4,
+                              horizontal: 6,
                             ),
                             decoration: BoxDecoration(
                               color: isDark
@@ -1086,15 +1038,16 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildEnrolledCoursesSection(bool isDark) {
     if (_enrolledCourses.isEmpty) {
       return Padding(
-        padding: const EdgeInsets.fromLTRB(24, 30, 24, 0),
+        padding: const EdgeInsets.fromLTRB(24, 26, 24, 0),
         child: Container(
-          padding: const EdgeInsets.all(30),
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 26, horizontal: 20),
           decoration: BoxDecoration(
             color: isDark ? darkCardBg : Colors.white,
-            borderRadius: BorderRadius.circular(25),
+            borderRadius: BorderRadius.circular(22),
             border: Border.all(
               color: (isDark ? darkGoldBorder : lightGoldBorder).withOpacity(
-                0.15,
+                0.2,
               ),
             ),
           ),
@@ -1102,21 +1055,15 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Icon(
                 Icons.school_outlined,
-                size: 50,
-                color: goldAccent.withOpacity(0.5),
+                size: 44,
+                color: goldAccent.withOpacity(0.6),
               ),
-              const SizedBox(height: 15),
+              const SizedBox(height: 12),
               const Text(
-                'لا توجد مقررات مفعلة حالياً',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                'لا توجد مقررات مفعلة',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15.5),
               ),
-              const SizedBox(height: 8),
-              Text(
-                'قم بتفعيل مقرراتك باستخدام الرموز التي حصلت عليها.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
-              ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
               ElevatedButton(
                 onPressed: () => _showCourseActivationDialog(isDark),
                 style: ElevatedButton.styleFrom(
@@ -1126,7 +1073,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: const Text('تفعيل أول مقرر'),
+                child: const Text(
+                  'تفعيل مقرر',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
               ),
             ],
           ),
@@ -1135,20 +1085,15 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(0, 30, 0, 0),
+      padding: const EdgeInsets.fromLTRB(0, 24, 0, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'مقرراتي المفعلة',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-                ),
-              ],
+            padding: EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+            child: Text(
+              'مقرراتي المفعلة',
+              style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.bold),
             ),
           ),
           ListView.builder(
@@ -1158,9 +1103,14 @@ class _HomeScreenState extends State<HomeScreen> {
             itemCount: _enrolledCourses.length,
             itemBuilder: (ctx, idx) {
               final course = _enrolledCourses[idx];
+              final profName = (course['professor_name'] ?? '')
+                  .toString()
+                  .trim();
+
               return Padding(
-                padding: const EdgeInsets.only(bottom: 15),
+                padding: const EdgeInsets.only(bottom: 12),
                 child: InkWell(
+                  borderRadius: BorderRadius.circular(18),
                   onTap: () {
                     Navigator.push(
                       context,
@@ -1178,7 +1128,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Container(
                     decoration: BoxDecoration(
                       color: isDark ? darkCardBg : Colors.white,
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: (isDark ? darkGoldBorder : lightGoldBorder)
+                            .withOpacity(0.18),
+                      ),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withOpacity(0.04),
@@ -1188,25 +1142,23 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                     child: Padding(
-                      padding: const EdgeInsets.all(15),
+                      padding: const EdgeInsets.all(14),
                       child: Row(
                         children: [
                           Container(
-                            width: 60,
-                            height: 60,
+                            width: 54,
+                            height: 54,
                             decoration: BoxDecoration(
-                              color: (isDark
-                                  ? darkCardSurface
-                                  : lightScaffoldBg),
-                              borderRadius: BorderRadius.circular(15),
+                              color: isDark ? darkCardSurface : lightScaffoldBg,
+                              borderRadius: BorderRadius.circular(14),
                             ),
                             child: const Icon(
                               Icons.menu_book_rounded,
                               color: goldAccent,
-                              size: 30,
+                              size: 26,
                             ),
                           ),
-                          const SizedBox(width: 15),
+                          const SizedBox(width: 14),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1218,20 +1170,22 @@ class _HomeScreenState extends State<HomeScreen> {
                                     fontSize: 15,
                                   ),
                                 ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'د. ${course['professor_name'] ?? ''}',
-                                  style: TextStyle(
-                                    color: Colors.grey.shade600,
-                                    fontSize: 12,
+                                if (profName.isNotEmpty) ...[
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    'د. $profName',
+                                    style: TextStyle(
+                                      color: Colors.grey.shade600,
+                                      fontSize: 12,
+                                    ),
                                   ),
-                                ),
+                                ],
                               ],
                             ),
                           ),
                           const Icon(
                             Icons.arrow_forward_ios_rounded,
-                            size: 16,
+                            size: 15,
                             color: Colors.grey,
                           ),
                         ],
@@ -1255,15 +1209,17 @@ class _HomeScreenState extends State<HomeScreen> {
           _buildDrawerHeader(isDark),
           Expanded(
             child: ListView(
-              padding: EdgeInsets.zero,
+              padding: const EdgeInsets.symmetric(vertical: 10),
               children: [
                 _buildDrawerItem(
+                  isDark: isDark,
                   icon: Icons.home_rounded,
                   title: 'الرئيسية',
                   index: 0,
                   onTap: () => Navigator.pop(context),
                 ),
                 _buildDrawerItem(
+                  isDark: isDark,
                   icon: Icons.school_rounded,
                   title: 'مقرراتي',
                   index: 1,
@@ -1274,13 +1230,37 @@ class _HomeScreenState extends State<HomeScreen> {
                       MaterialPageRoute(
                         builder: (_) => const MyCoursesScreen(),
                       ),
-                    ).then((_) => _loadUserData());
+                    ).then((_) {
+                      if (mounted) {
+                        setState(() => _selectedDrawerIndex = 0);
+                        _loadUserData();
+                      }
+                    });
                   },
                 ),
                 _buildDrawerItem(
+                  isDark: isDark,
+                  icon: Icons.quiz_rounded,
+                  title: 'بنك الأسئلة',
+                  index: 2,
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const QuizScreen()),
+                    ).then((_) {
+                      if (mounted) {
+                        setState(() => _selectedDrawerIndex = 0);
+                        _loadUserData();
+                      }
+                    });
+                  },
+                ),
+                _buildDrawerItem(
+                  isDark: isDark,
                   icon: Icons.favorite_rounded,
                   title: 'المفضلة',
-                  index: 2,
+                  index: 3,
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.push(
@@ -1288,13 +1268,19 @@ class _HomeScreenState extends State<HomeScreen> {
                       MaterialPageRoute(
                         builder: (_) => const FavoritesScreen(),
                       ),
-                    ).then((_) => _loadUserData());
+                    ).then((_) {
+                      if (mounted) {
+                        setState(() => _selectedDrawerIndex = 0);
+                        _loadUserData();
+                      }
+                    });
                   },
                 ),
                 _buildDrawerItem(
+                  isDark: isDark,
                   icon: Icons.download_rounded,
                   title: 'المحملات',
-                  index: 3,
+                  index: 4,
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.push(
@@ -1302,28 +1288,41 @@ class _HomeScreenState extends State<HomeScreen> {
                       MaterialPageRoute(
                         builder: (_) => const DownloadsScreen(),
                       ),
-                    ).then((_) => _loadUserData());
+                    ).then((_) {
+                      if (mounted) {
+                        setState(() => _selectedDrawerIndex = 0);
+                        _loadUserData();
+                      }
+                    });
                   },
                 ),
-                const Divider(height: 40, indent: 20, endIndent: 20),
+                const Divider(height: 28, indent: 20, endIndent: 20),
                 _buildDrawerItem(
+                  isDark: isDark,
                   icon: Icons.person_rounded,
                   title: 'الملف الشخصي',
-                  index: 4,
+                  index: 5,
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_) => const ProfileScreen()),
-                    ).then((_) => _loadUserData());
+                    ).then((_) {
+                      if (mounted) {
+                        setState(() => _selectedDrawerIndex = 0);
+                        _loadUserData();
+                      }
+                    });
                   },
                 ),
                 _buildDrawerItem(
+                  isDark: isDark,
                   icon: Icons.support_agent_rounded,
                   title: 'الدعم الفني',
-                  index: 5,
+                  index: 6,
                   onTap: () {
                     Navigator.pop(context);
+                    setState(() => _selectedDrawerIndex = 0);
                     _showSupportDialog(isDark);
                   },
                 ),
@@ -1337,7 +1336,7 @@ class _HomeScreenState extends State<HomeScreen> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(15),
               ),
-              tileColor: Colors.red.withOpacity(0.05),
+              tileColor: Colors.red.withOpacity(0.08),
               leading: const Icon(
                 Icons.logout_rounded,
                 color: Colors.redAccent,
@@ -1359,26 +1358,26 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildDrawerHeader(bool isDark) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 60, 20, 30),
+      padding: const EdgeInsets.fromLTRB(20, 56, 20, 26),
       decoration: BoxDecoration(color: isDark ? darkCardBg : lightEmeraldDark),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           CircleAvatar(
-            radius: 35,
+            radius: 32,
             backgroundColor: goldAccent.withOpacity(0.2),
             child: const Icon(
               Icons.person_rounded,
               color: goldAccent,
-              size: 40,
+              size: 36,
             ),
           ),
-          const SizedBox(height: 15),
+          const SizedBox(height: 14),
           Text(
-            _studentName.isNotEmpty ? _studentName : 'أهلاً بك',
+            _studentName.isNotEmpty ? _studentName : 'طالب الأكاديمية',
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 18,
+              fontSize: 17,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -1386,7 +1385,7 @@ class _HomeScreenState extends State<HomeScreen> {
             supabase.auth.currentUser?.email ?? '',
             style: TextStyle(
               color: Colors.white.withOpacity(0.6),
-              fontSize: 13,
+              fontSize: 12.5,
             ),
           ),
         ],
@@ -1395,24 +1394,73 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildDrawerItem({
+    required bool isDark,
     required IconData icon,
     required String title,
     required int index,
     required VoidCallback onTap,
   }) {
     final isSelected = _selectedDrawerIndex == index;
-    return ListTile(
-      onTap: onTap,
-      leading: Icon(icon, color: isSelected ? goldAccent : Colors.grey),
-      title: Text(
-        title,
-        style: TextStyle(
-          color: isSelected ? goldAccent : null,
-          fontWeight: isSelected ? FontWeight.bold : null,
+    final activeTextColor = isDark ? goldAccent : lightEmeraldDark;
+    final inactiveTextColor = isDark ? Colors.white70 : Colors.black87;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
+      child: Material(
+        color: isSelected
+            ? goldAccent.withOpacity(isDark ? 0.18 : 0.22)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          splashColor: goldAccent.withOpacity(0.3),
+          highlightColor: goldAccent.withOpacity(0.18),
+          onTap: () {
+            setState(() => _selectedDrawerIndex = index);
+            onTap();
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: isSelected
+                  ? Border.all(color: goldAccent.withOpacity(0.6), width: 1.2)
+                  : null,
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  icon,
+                  color: isSelected ? goldAccent : Colors.grey.shade500,
+                  size: 22,
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      color: isSelected ? activeTextColor : inactiveTextColor,
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.w500,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                if (isSelected)
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: const BoxDecoration(
+                      color: goldAccent,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
-      selected: isSelected,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 24),
     );
   }
 }

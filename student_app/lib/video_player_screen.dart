@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:video_player/video_player.dart';
+
 import 'bookmarks_service.dart';
 import 'pdf_viewer_screen.dart';
 import 'quiz_screen.dart';
@@ -142,15 +144,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
 
     final rawUrl = _activeLecture['video_url']?.toString().trim();
-    final String videoUrl = (rawUrl != null && rawUrl.isNotEmpty)
-        ? rawUrl
-        : 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
-
-    debugPrint('🎥 Loading video from: $videoUrl');
+    if (rawUrl == null || rawUrl.isEmpty) {
+      setState(() {
+        _isLoadingVideo = false;
+        _videoError = 'رابط الفيديو غير متوفر حالياً.';
+      });
+      return;
+    }
 
     try {
       final controller = VideoPlayerController.networkUrl(
-        Uri.parse(videoUrl),
+        Uri.parse(rawUrl),
         videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
       );
 
@@ -175,12 +179,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         if (mounted) setState(() {});
       });
     } catch (error) {
-      debugPrint('❌ Video Player Error: $error');
       if (mounted) {
         setState(() {
           _isLoadingVideo = false;
-          _videoError =
-              'تعذر تشغيل الفيديو: تأكد من اتصال الإنترنت وصلاحية الرابط.\n($error)';
+          _videoError = 'تعذر تشغيل الفيديو، تحقق من الاتصال بالإنترنت.';
         });
       }
     }
@@ -379,13 +381,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: isSelected ? goldAccent : Colors.white70,
-                      fontWeight:
-                          isSelected ? FontWeight.bold : FontWeight.normal,
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.normal,
                     ),
                   ),
                   trailing: isSelected
-                      ? const Icon(Icons.check_rounded,
-                          color: goldAccent, size: 20)
+                      ? const Icon(
+                          Icons.check_rounded,
+                          color: goldAccent,
+                          size: 20,
+                        )
                       : null,
                   onTap: () {
                     setState(() {
@@ -439,8 +445,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           ),
         ),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded,
-              color: Colors.white, size: 20),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: Colors.white,
+            size: 20,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -519,17 +528,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       return Container(
         color: Colors.black,
         child: const Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(color: goldAccent),
-              SizedBox(height: 12),
-              Text(
-                'جاري تهيئة البث المباشر...',
-                style: TextStyle(color: Colors.white70, fontSize: 12),
-              ),
-            ],
-          ),
+          child: CircularProgressIndicator(color: goldAccent),
         ),
       );
     }
@@ -542,8 +541,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline_rounded,
-                  color: Color(0xFFEF4444), size: 40),
+              const Icon(
+                Icons.error_outline_rounded,
+                color: Color(0xFFEF4444),
+                size: 40,
+              ),
               const SizedBox(height: 10),
               Text(
                 _videoError!,
@@ -556,13 +558,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: goldAccent,
                   foregroundColor: Colors.black,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                 ),
                 icon: const Icon(Icons.replay_rounded, size: 16),
-                label: const Text('إعادة المحاولة',
-                    style:
-                        TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                label: const Text(
+                  'إعادة المحاولة',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                ),
               ),
             ],
           ),
@@ -644,8 +649,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             Positioned(
               right: 28,
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: 0.65),
                   borderRadius: BorderRadius.circular(30),
@@ -654,8 +661,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.fast_forward_rounded,
-                        color: goldAccent, size: 22),
+                    Icon(
+                      Icons.fast_forward_rounded,
+                      color: goldAccent,
+                      size: 22,
+                    ),
                     SizedBox(width: 4),
                     Text(
                       '+10s',
@@ -673,8 +683,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             Positioned(
               left: 28,
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: 0.65),
                   borderRadius: BorderRadius.circular(30),
@@ -692,8 +704,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       ),
                     ),
                     SizedBox(width: 4),
-                    Icon(Icons.fast_rewind_rounded,
-                        color: goldAccent, size: 22),
+                    Icon(
+                      Icons.fast_rewind_rounded,
+                      color: goldAccent,
+                      size: 22,
+                    ),
                   ],
                 ),
               ),
@@ -702,8 +717,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             Positioned(
               top: 14,
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: 0.75),
                   borderRadius: BorderRadius.circular(20),
@@ -742,10 +759,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     final cardBg = isDark ? darkCardBg : lightEmeraldDark;
     final surfaceBg = isDark ? darkCardSurface : lightEmeraldLight;
     final border = isDark ? darkGoldBorder : lightGoldBorder;
-    final hasPdf = (_activeLecture['telegram_pdf_id'] != null &&
+    final hasPdf =
+        (_activeLecture['telegram_pdf_id'] != null &&
             _activeLecture['telegram_pdf_id'].toString().trim().isNotEmpty) ||
         (_activeLecture['pdf_url'] != null &&
             _activeLecture['pdf_url'].toString().trim().isNotEmpty);
+    final description = (_activeLecture['description'] ?? '').toString().trim();
 
     return Container(
       width: double.infinity,
@@ -768,8 +787,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           Row(
             children: [
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: border.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(8),
@@ -786,8 +807,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               ),
               const Spacer(),
               IconButton(
-                tooltip:
-                    _isBookmarked ? 'إزالة من المفضلة' : 'حفظ في المفضلة',
+                tooltip: _isBookmarked ? 'إزالة من المفضلة' : 'حفظ في المفضلة',
                 icon: Icon(
                   _isBookmarked
                       ? Icons.bookmark_rounded
@@ -819,7 +839,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Text(
             _activeLecture['title'] ?? 'عنوان المحاضرة',
             style: const TextStyle(
@@ -829,17 +849,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               height: 1.35,
             ),
           ),
-          const SizedBox(height: 6),
-          Text(
-            _activeLecture['description'] ??
-                'شرح شامل وتفصيلي لمحاور الجلسة.',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.7),
-              fontSize: 12.5,
-              height: 1.45,
+          if (description.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              description,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.75),
+                fontSize: 12.5,
+                height: 1.45,
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
+          ],
+          const SizedBox(height: 14),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -855,7 +876,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     context,
                     MaterialPageRoute(
                       builder: (_) => QuizScreen(
-                        title: _activeLecture['title']?.toString() ??
+                        title:
+                            _activeLecture['title']?.toString() ??
                             'اختبار المحاضرة',
                         lectureId: _activeLecture['id']?.toString(),
                         subjectId: _activeLecture['subject_id']?.toString(),
@@ -864,8 +886,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   );
                 },
                 icon: const Icon(Icons.quiz_outlined, size: 18),
-                label: const Text('اختبار المحاضرة',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
+                label: const Text(
+                  'اختبار المحاضرة',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
               ),
               if (hasPdf)
                 OutlinedButton.icon(
@@ -882,11 +906,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                         builder: (_) => ProtectedPdfViewerScreen(
                           lectureId:
                               _activeLecture['id']?.toString() ?? 'lec_temp',
-                          title: _activeLecture['title']?.toString() ??
+                          title:
+                              _activeLecture['title']?.toString() ??
                               'ملخص المحاضرة',
                           directPdfUrl: _activeLecture['pdf_url']?.toString(),
-                          telegramPdfId:
-                              _activeLecture['telegram_pdf_id']?.toString(),
+                          telegramPdfId: _activeLecture['telegram_pdf_id']
+                              ?.toString(),
                           studentName: _watermarkText,
                           subjectId: _activeLecture['subject_id']?.toString(),
                         ),
@@ -894,9 +919,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     );
                   },
                   icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
-                  label: const Text('الملخص',
-                      style:
-                          TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  label: const Text(
+                    'الملخص',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
                 ),
             ],
           ),
@@ -943,13 +969,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           itemBuilder: (context, index) {
             final lecture = widget.allLectures[index];
             final isSelected = lecture['id'] == _activeLecture['id'];
+            final hasDuration =
+                lecture['duration_minutes'] != null &&
+                lecture['duration_minutes'].toString() != '0';
 
             return InkWell(
               onTap: () => _switchLecture(lecture),
               borderRadius: BorderRadius.circular(14),
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
                 decoration: BoxDecoration(
                   color: isSelected
                       ? (isDark ? darkCardSurface : lightEmeraldLight)
@@ -986,28 +1017,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                                   : FontWeight.w500,
                             ),
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            lecture['duration_minutes'] != null
-                                ? '${lecture['duration_minutes']} دقيقة'
-                                : 'المدة غير محددة',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.55),
-                              fontSize: 11,
+                          if (hasDuration) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              '${lecture['duration_minutes']} دقيقة',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.55),
+                                fontSize: 11,
+                              ),
                             ),
-                          ),
+                          ],
                         ],
                       ),
                     ),
-                    if (isSelected)
-                      const Text(
-                        'تشغيل الآن',
-                        style: TextStyle(
-                          color: goldAccent,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
                   ],
                 ),
               ),
@@ -1032,10 +1054,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            Colors.transparent,
-            Colors.black.withValues(alpha: 0.85),
-          ],
+          colors: [Colors.transparent, Colors.black.withValues(alpha: 0.85)],
         ),
       ),
       child: Column(
@@ -1075,16 +1094,22 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   onPressed: _togglePlayPause,
                 ),
                 IconButton(
-                  icon: const Icon(Icons.replay_10_rounded,
-                      color: Colors.white, size: 22),
+                  icon: const Icon(
+                    Icons.replay_10_rounded,
+                    color: Colors.white,
+                    size: 22,
+                  ),
                   onPressed: () {
                     _startHideTimer();
                     _seekRewind10();
                   },
                 ),
                 IconButton(
-                  icon: const Icon(Icons.forward_10_rounded,
-                      color: Colors.white, size: 22),
+                  icon: const Icon(
+                    Icons.forward_10_rounded,
+                    color: Colors.white,
+                    size: 22,
+                  ),
                   onPressed: () {
                     _startHideTimer();
                     _seekForward10();
@@ -1094,20 +1119,25 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 Text(
                   '${_formatDuration(controller.value.position)} / ${_formatDuration(controller.value.duration)}',
                   style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600),
+                    color: Colors.white70,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const Spacer(),
                 InkWell(
                   onTap: _showSpeedDialog,
                   borderRadius: BorderRadius.circular(6),
                   child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       border: Border.all(
-                          color: goldAccent.withValues(alpha: 0.7), width: 1),
+                        color: goldAccent.withValues(alpha: 0.7),
+                        width: 1,
+                      ),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
@@ -1329,13 +1359,17 @@ class _FullScreenVideoPageState extends State<FullScreenVideoPage> {
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: isSelected ? goldAccent : Colors.white70,
-                      fontWeight:
-                          isSelected ? FontWeight.bold : FontWeight.normal,
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.normal,
                     ),
                   ),
                   trailing: isSelected
-                      ? const Icon(Icons.check_rounded,
-                          color: goldAccent, size: 20)
+                      ? const Icon(
+                          Icons.check_rounded,
+                          color: goldAccent,
+                          size: 20,
+                        )
                       : null,
                   onTap: () {
                     setState(() => _activeSpeed = speed);
@@ -1456,8 +1490,11 @@ class _FullScreenVideoPageState extends State<FullScreenVideoPage> {
                       shape: BoxShape.circle,
                     ),
                     child: IconButton(
-                      icon: const Icon(Icons.arrow_back_rounded,
-                          color: Colors.white, size: 26),
+                      icon: const Icon(
+                        Icons.arrow_back_rounded,
+                        color: Colors.white,
+                        size: 26,
+                      ),
                       onPressed: () => Navigator.pop(context),
                     ),
                   ),
@@ -1467,19 +1504,25 @@ class _FullScreenVideoPageState extends State<FullScreenVideoPage> {
               Positioned(
                 right: 40,
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.65),
                     borderRadius: BorderRadius.circular(30),
-                    border:
-                        Border.all(color: goldAccent.withValues(alpha: 0.5)),
+                    border: Border.all(
+                      color: goldAccent.withValues(alpha: 0.5),
+                    ),
                   ),
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.fast_forward_rounded,
-                          color: goldAccent, size: 22),
+                      Icon(
+                        Icons.fast_forward_rounded,
+                        color: goldAccent,
+                        size: 22,
+                      ),
                       SizedBox(width: 4),
                       Text(
                         '+10s',
@@ -1497,13 +1540,16 @@ class _FullScreenVideoPageState extends State<FullScreenVideoPage> {
               Positioned(
                 left: 40,
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.65),
                     borderRadius: BorderRadius.circular(30),
-                    border:
-                        Border.all(color: goldAccent.withValues(alpha: 0.5)),
+                    border: Border.all(
+                      color: goldAccent.withValues(alpha: 0.5),
+                    ),
                   ),
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
@@ -1517,8 +1563,11 @@ class _FullScreenVideoPageState extends State<FullScreenVideoPage> {
                         ),
                       ),
                       SizedBox(width: 4),
-                      Icon(Icons.fast_rewind_rounded,
-                          color: goldAccent, size: 22),
+                      Icon(
+                        Icons.fast_rewind_rounded,
+                        color: goldAccent,
+                        size: 22,
+                      ),
                     ],
                   ),
                 ),
@@ -1527,8 +1576,10 @@ class _FullScreenVideoPageState extends State<FullScreenVideoPage> {
               Positioned(
                 top: 30,
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.75),
                     borderRadius: BorderRadius.circular(20),
@@ -1577,9 +1628,11 @@ class _FullScreenVideoPageState extends State<FullScreenVideoPage> {
                           inactiveTrackColor: Colors.white24,
                           trackHeight: 2.5,
                           thumbShape: const RoundSliderThumbShape(
-                              enabledThumbRadius: 5),
-                          overlayShape:
-                              const RoundSliderOverlayShape(overlayRadius: 10),
+                            enabledThumbRadius: 5,
+                          ),
+                          overlayShape: const RoundSliderOverlayShape(
+                            overlayRadius: 10,
+                          ),
                         ),
                         child: Slider(
                           value: posSec.clamp(0.0, maxSec),
@@ -1587,14 +1640,18 @@ class _FullScreenVideoPageState extends State<FullScreenVideoPage> {
                           max: maxSec,
                           onChanged: (val) {
                             _startHideTimer();
-                            widget.controller
-                                .seekTo(Duration(seconds: val.toInt()));
+                            widget.controller.seekTo(
+                              Duration(seconds: val.toInt()),
+                            );
                           },
                         ),
                       ),
                       Padding(
                         padding: const EdgeInsets.only(
-                            left: 16, right: 16, bottom: 12),
+                          left: 16,
+                          right: 16,
+                          bottom: 12,
+                        ),
                         child: Row(
                           children: [
                             IconButton(
@@ -1608,16 +1665,22 @@ class _FullScreenVideoPageState extends State<FullScreenVideoPage> {
                               onPressed: _togglePlayPause,
                             ),
                             IconButton(
-                              icon: const Icon(Icons.replay_10_rounded,
-                                  color: Colors.white, size: 24),
+                              icon: const Icon(
+                                Icons.replay_10_rounded,
+                                color: Colors.white,
+                                size: 24,
+                              ),
                               onPressed: () {
                                 _startHideTimer();
                                 _seekRewind10();
                               },
                             ),
                             IconButton(
-                              icon: const Icon(Icons.forward_10_rounded,
-                                  color: Colors.white, size: 24),
+                              icon: const Icon(
+                                Icons.forward_10_rounded,
+                                color: Colors.white,
+                                size: 24,
+                              ),
                               onPressed: () {
                                 _startHideTimer();
                                 _seekForward10();
@@ -1627,9 +1690,10 @@ class _FullScreenVideoPageState extends State<FullScreenVideoPage> {
                             Text(
                               '${_formatDuration(widget.controller.value.position)} / ${_formatDuration(widget.controller.value.duration)}',
                               style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600),
+                                color: Colors.white70,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                             const Spacer(),
                             InkWell(
@@ -1637,11 +1701,14 @@ class _FullScreenVideoPageState extends State<FullScreenVideoPage> {
                               borderRadius: BorderRadius.circular(6),
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 5),
+                                  horizontal: 10,
+                                  vertical: 5,
+                                ),
                                 decoration: BoxDecoration(
                                   border: Border.all(
-                                      color: goldAccent.withValues(alpha: 0.7),
-                                      width: 1),
+                                    color: goldAccent.withValues(alpha: 0.7),
+                                    width: 1,
+                                  ),
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(
