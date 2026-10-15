@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'main.dart';
 import 'youtube_lecture_screen.dart';
 import 'device_service.dart';
@@ -60,11 +61,14 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
       final fingerprint = await DeviceService.getFingerprint();
       final pid = widget.professorId?.trim();
       final gate = Map<String, dynamic>.from(
-        await supabase.rpc('get_vault_key', params: {
-          'p_subject_id': widget.subjectId,
-          'p_professor_id': (pid == null || pid.isEmpty) ? null : pid,
-          'p_fingerprint': fingerprint,
-        }) as Map,
+        await supabase.rpc(
+          'get_vault_key',
+          params: {
+            'p_subject_id': widget.subjectId,
+            'p_professor_id': (pid == null || pid.isEmpty) ? null : pid,
+            'p_fingerprint': fingerprint,
+          },
+        ) as Map,
       );
 
       if (gate['ok'] != true) {
@@ -86,8 +90,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
           .select('*, professors(id, name, bio, avatar_url)')
           .eq('subject_id', widget.subjectId);
 
-      if (widget.professorId != null &&
-          widget.professorId!.trim().isNotEmpty) {
+      if (widget.professorId != null && widget.professorId!.trim().isNotEmpty) {
         query = query.eq('professor_id', widget.professorId!.trim());
       }
 
@@ -96,8 +99,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
 
       Map<String, dynamic>? profInfo;
 
-      if (lecturesList.isNotEmpty &&
-          lecturesList.first['professors'] != null) {
+      if (lecturesList.isNotEmpty && lecturesList.first['professors'] != null) {
         profInfo = Map<String, dynamic>.from(lecturesList.first['professors']);
       } else if (widget.professorId != null &&
           widget.professorId!.trim().isNotEmpty) {
@@ -131,7 +133,6 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
     final scaffoldBg = isDark ? darkScaffoldBg : lightScaffoldBg;
     final appBarBg = isDark ? darkCardBg : lightEmeraldDark;
     final border = isDark ? darkGoldBorder : lightGoldBorder;
-    const titleColor = Colors.white;
 
     return Scaffold(
       backgroundColor: scaffoldBg,
@@ -145,19 +146,22 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
         title: Text(
           widget.subjectTitle,
           style: const TextStyle(
-            color: titleColor,
+            color: Colors.white,
             fontSize: 16,
             fontWeight: FontWeight.bold,
           ),
         ),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded,
-              color: goldAccent, size: 20),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: goldAccent,
+            size: 20,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
           IconButton(
-            tooltip: isDark ? 'التحويل للوضع المضيء' : 'التحويل للوضع الليلي',
+            tooltip: isDark ? 'الوضع النهاري' : 'الوضع الليلي',
             icon: Icon(
               isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
               color: goldAccent,
@@ -181,7 +185,9 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                     _buildCourseHeaderCard(isDark),
                     const SizedBox(height: 24),
                     _buildSectionHeader(
-                        'المحاضرات والشروحات (${_lectures.length})', isDark),
+                      'المحاضرات (${_lectures.length})',
+                      isDark,
+                    ),
                     const SizedBox(height: 14),
                     _buildLecturesList(isDark),
                   ],
@@ -198,14 +204,16 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
         : const [lightEmeraldDark, lightEmeraldLight];
     final iconCircleBg = isDark ? darkInputBg : lightEmeraldInner;
 
-    String profDisplayText = 'المقرر الأكاديمي';
+    String profDisplayText = '';
     if (_professor != null) {
-      final name = _professor!['name'] ?? '';
-      final bio = _professor!['bio'] ?? '';
-      profDisplayText = bio.isNotEmpty ? '$bio - د. $name' : 'د. $name';
+      final name = (_professor!['name'] ?? '').toString().trim();
+      final bio = (_professor!['bio'] ?? '').toString().trim();
+      if (name.isNotEmpty) {
+        profDisplayText = bio.isNotEmpty ? '$bio - د. $name' : 'د. $name';
+      }
     } else if (widget.professorName != null &&
-        widget.professorName!.isNotEmpty) {
-      profDisplayText = 'د. ${widget.professorName}';
+        widget.professorName!.trim().isNotEmpty) {
+      profDisplayText = 'د. ${widget.professorName!.trim()}';
     }
 
     return Container(
@@ -237,10 +245,16 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                 decoration: BoxDecoration(
                   color: iconCircleBg,
                   shape: BoxShape.circle,
-                  border: Border.all(color: border.withOpacity(0.8), width: 1.2),
+                  border: Border.all(
+                    color: border.withOpacity(0.8),
+                    width: 1.2,
+                  ),
                 ),
-                child: const Icon(Icons.menu_book_rounded,
-                    color: goldAccent, size: 24),
+                child: const Icon(
+                  Icons.menu_book_rounded,
+                  color: goldAccent,
+                  size: 24,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -255,14 +269,16 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      profDisplayText,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.75),
-                        fontSize: 12.5,
+                    if (profDisplayText.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        profDisplayText,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.75),
+                          fontSize: 12.5,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
@@ -275,9 +291,11 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               _buildCourseStatItem(
-                  Icons.play_lesson_outlined, '${_lectures.length} محاضرة'),
+                Icons.play_lesson_outlined,
+                '${_lectures.length} محاضرة',
+              ),
               Container(width: 1, height: 20, color: border.withOpacity(0.3)),
-              _buildCourseStatItem(Icons.verified_rounded, 'اشتراك مفعّل'),
+              _buildCourseStatItem(Icons.verified_rounded, 'مفعّل'),
               Container(width: 1, height: 20, color: border.withOpacity(0.3)),
               InkWell(
                 onTap: () {
@@ -285,7 +303,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                     context,
                     MaterialPageRoute(
                       builder: (_) => QuizScreen(
-                        title: 'اختبار: ${widget.subjectTitle}',
+                        title: widget.subjectTitle,
                         subjectId: widget.subjectId,
                       ),
                     ),
@@ -293,10 +311,14 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                 },
                 borderRadius: BorderRadius.circular(8),
                 child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                  child:
-                      _buildCourseStatItem(Icons.quiz_outlined, 'بنك الأسئلة'),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 4,
+                  ),
+                  child: _buildCourseStatItem(
+                    Icons.quiz_outlined,
+                    'بنك الأسئلة',
+                  ),
                 ),
               ),
             ],
@@ -314,7 +336,10 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
         Text(
           label,
           style: const TextStyle(
-              color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ],
     );
@@ -337,7 +362,10 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
         Text(
           title,
           style: TextStyle(
-              color: titleColor, fontSize: 16, fontWeight: FontWeight.bold),
+            color: titleColor,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ],
     );
@@ -351,7 +379,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
     if (_lectures.isEmpty) {
       return Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 16),
+        padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
         decoration: BoxDecoration(
           color: cardBg,
           borderRadius: BorderRadius.circular(16),
@@ -359,19 +387,15 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
         ),
         child: const Column(
           children: [
-            Icon(Icons.video_library_outlined, color: goldAccent, size: 40),
+            Icon(Icons.video_library_outlined, color: goldAccent, size: 38),
             SizedBox(height: 10),
             Text(
-              'لا توجد محاضرات مضافة بعد',
+              'لا توجد محاضرات مضافة حالياً',
               style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 4),
-            Text(
-              'سيتم رفع المحاضرات وتحديث المحتوى قريباً',
-              style: TextStyle(color: Colors.white70, fontSize: 11),
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ],
         ),
@@ -385,10 +409,11 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
       separatorBuilder: (_, __) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
         final lecture = _lectures[index];
-        final duration = lecture['duration_minutes'] != null
-            ? '${lecture['duration_minutes']} دقيقة'
-            : 'غير محدد';
-        final hasPdf = (lecture['telegram_pdf_id'] != null &&
+        final hasDuration =
+            lecture['duration_minutes'] != null &&
+            lecture['duration_minutes'].toString() != '0';
+        final hasPdf =
+            (lecture['telegram_pdf_id'] != null &&
                 lecture['telegram_pdf_id'].toString().trim().isNotEmpty) ||
             (lecture['pdf_url'] != null &&
                 lecture['pdf_url'].toString().trim().isNotEmpty);
@@ -429,8 +454,10 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                   decoration: BoxDecoration(
                     color: indexBg,
                     borderRadius: BorderRadius.circular(12),
-                    border:
-                        Border.all(color: border.withOpacity(0.6), width: 1),
+                    border: Border.all(
+                      color: border.withOpacity(0.6),
+                      width: 1,
+                    ),
                   ),
                   child: Center(
                     child: Text(
@@ -449,7 +476,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        lecture['title'] ?? 'محاضرة بدون عنوان',
+                        lecture['title'] ?? 'محاضرة ${index + 1}',
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -459,46 +486,62 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                           height: 1.4,
                         ),
                       ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Icon(Icons.access_time_rounded,
-                              color: Colors.white.withOpacity(0.6), size: 14),
-                          const SizedBox(width: 4),
-                          Text(
-                            duration,
-                            style: TextStyle(
-                                color: Colors.white.withOpacity(0.7),
-                                fontSize: 11),
-                          ),
-                          if (hasPdf) ...[
-                            const SizedBox(width: 12),
-                            const Icon(Icons.picture_as_pdf_outlined,
-                                color: goldAccent, size: 14),
-                            const SizedBox(width: 4),
-                            const Text(
-                              'ملخص PDF',
-                              style: TextStyle(
+                      if (hasDuration || hasPdf) ...[
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            if (hasDuration) ...[
+                              Icon(
+                                Icons.access_time_rounded,
+                                color: Colors.white.withOpacity(0.6),
+                                size: 14,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${lecture['duration_minutes']} دقيقة',
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.7),
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                            if (hasDuration && hasPdf)
+                              const SizedBox(width: 12),
+                            if (hasPdf) ...[
+                              const Icon(
+                                Icons.picture_as_pdf_outlined,
+                                color: goldAccent,
+                                size: 14,
+                              ),
+                              const SizedBox(width: 4),
+                              const Text(
+                                'PDF',
+                                style: TextStyle(
                                   color: goldAccent,
                                   fontSize: 11,
-                                  fontWeight: FontWeight.bold),
-                            ),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
                           ],
-                        ],
-                      ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
                 IconButton(
                   tooltip: 'اختبار المحاضرة',
-                  icon: const Icon(Icons.quiz_outlined,
-                      color: goldAccent, size: 22),
+                  icon: const Icon(
+                    Icons.quiz_outlined,
+                    color: goldAccent,
+                    size: 22,
+                  ),
                   onPressed: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (_) => QuizScreen(
-                          title: 'اختبار: ${lecture['title'] ?? 'المحاضرة'}',
+                          title: lecture['title']?.toString() ?? 'المحاضرة',
                           lectureId: lecture['id']?.toString(),
                           subjectId: widget.subjectId,
                         ),
@@ -507,8 +550,11 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                   },
                 ),
                 const SizedBox(width: 4),
-                const Icon(Icons.play_circle_fill_rounded,
-                    color: goldAccent, size: 30),
+                const Icon(
+                  Icons.play_circle_fill_rounded,
+                  color: goldAccent,
+                  size: 30,
+                ),
               ],
             ),
           ),

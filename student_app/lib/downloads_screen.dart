@@ -1,6 +1,8 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+
 import 'main.dart';
 import 'pdf_viewer_screen.dart';
 import 'vault_security_service.dart';
@@ -23,7 +25,6 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
     _loadVaultFiles();
   }
 
-  /// إعادة بناء UUID في حال كان النص مكوناً من 32 محرفاً بدون شرطات
   String _restoreUuidIfNeeded(String raw) {
     if (raw.length == 32 && !raw.contains('-')) {
       return '${raw.substring(0, 8)}-${raw.substring(8, 12)}-${raw.substring(12, 16)}-${raw.substring(16, 20)}-${raw.substring(20)}';
@@ -60,12 +61,14 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
               subjectId = _restoreUuidIfNeeded(parts.first);
               lectureId = _restoreUuidIfNeeded(parts.last);
             } else {
-              lectureId = _restoreUuidIfNeeded(baseName.replaceFirst('lec_', ''));
+              lectureId = _restoreUuidIfNeeded(
+                baseName.replaceFirst('lec_', ''),
+              );
             }
           }
 
           if (title.isEmpty) {
-            title = 'ملخص محفوظ ($lectureId)';
+            title = 'ملخص محفوظ';
           }
 
           items.add({
@@ -110,16 +113,15 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
           const SnackBar(
             backgroundColor: Color(0xFFEF4444),
             behavior: SnackBarBehavior.floating,
-            content: Text('تم حذف الملف من الخزنة المحلية.'),
+            content: Text('تم حذف الملف.'),
           ),
         );
       }
     } catch (e) {
       debugPrint('Error deleting file: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تعذر حذف الملف')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('تعذر حذف الملف')));
       }
     }
   }
@@ -127,14 +129,15 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final scaffoldBg =
-        isDark ? const Color(0xFF0B0F17) : const Color(0xFFF3EFE6);
+    final scaffoldBg = isDark
+        ? const Color(0xFF0B0F17)
+        : const Color(0xFFF3EFE6);
     final cardBg = isDark ? const Color(0xFF151E2E) : const Color(0xFF0E332E);
-    final cardSurface =
-        isDark ? const Color(0xFF1E2B40) : const Color(0xFF15443E);
+    final cardSurface = isDark
+        ? const Color(0xFF1E2B40)
+        : const Color(0xFF15443E);
     const border = Color(0xFFC5A059);
     const goldAccent = Color(0xFFD8B467);
-    final textColor = isDark ? Colors.white : const Color(0xFF0E332E);
 
     return Scaffold(
       backgroundColor: scaffoldBg,
@@ -145,18 +148,24 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
           bottom: BorderSide(color: border.withOpacity(0.35), width: 1),
         ),
         title: const Text(
-          'الملخصات والمحاضرات المحملة',
+          'المحملات',
           style: TextStyle(
-              color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded,
-              color: goldAccent, size: 20),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: goldAccent,
+            size: 20,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
           IconButton(
-            tooltip: isDark ? 'التحويل للوضع المضيء' : 'التحويل للوضع الليلي',
+            tooltip: isDark ? 'الوضع النهاري' : 'الوضع الليلي',
             icon: Icon(
               isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
               color: goldAccent,
@@ -169,142 +178,159 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: goldAccent))
           : _vaultItems.isEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 32,
+                    horizontal: 20,
+                  ),
+                  decoration: BoxDecoration(
+                    color: cardBg,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: border.withOpacity(0.7),
+                      width: 1.2,
+                    ),
+                  ),
+                  child: const Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.cloud_off_rounded,
+                        color: goldAccent,
+                        size: 44,
+                      ),
+                      SizedBox(height: 14),
+                      Text(
+                        'لا توجد ملخصات محملة حالياً',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          : ListView.separated(
+              padding: const EdgeInsets.all(18),
+              itemCount: _vaultItems.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                final item = _vaultItems[index];
+                final file = item['file'] as File;
+                final fileName = item['fileName'] as String;
+                final lectureId = item['lectureId'] as String;
+                final subjectId = item['subjectId'] as String?;
+                final title = item['title'] as String;
+                final size = _getFileSize(file);
+
+                return InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ProtectedPdfViewerScreen(
+                          lectureId: lectureId,
+                          subjectId: subjectId,
+                          title: title,
+                        ),
+                      ),
+                    ).then((_) => _loadVaultFiles());
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: cardBg,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: border.withOpacity(0.6),
+                        width: 1.2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.18),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(18),
+                          padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: cardBg,
+                            color: cardSurface,
                             shape: BoxShape.circle,
-                            border: Border.all(color: border.withOpacity(0.5)),
+                            border: Border.all(color: border.withOpacity(0.6)),
                           ),
-                          child: const Icon(Icons.cloud_off_rounded,
-                              color: goldAccent, size: 40),
+                          child: const Icon(
+                            Icons.picture_as_pdf_rounded,
+                            color: goldAccent,
+                            size: 24,
+                          ),
                         ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'لا توجد ملخصات محفوظة بدون إنترنت',
-                          style: TextStyle(
-                              color: textColor,
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  const Icon(
+                                    Icons.lock_rounded,
+                                    color: Color(0xFF10B981),
+                                    size: 12,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    size,
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.65),
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'عند فتح أي ملخص PDF للمحاضرات سيتم حفظه تلقائياً هنا للقراءة بدون إنترنت.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              color: textColor.withOpacity(0.7), fontSize: 12),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.delete_outline_rounded,
+                            color: Color(0xFFEF4444),
+                            size: 22,
+                          ),
+                          onPressed: () => _deleteFile(file, fileName),
+                        ),
+                        const Icon(
+                          Icons.arrow_forward_ios_rounded,
+                          color: goldAccent,
+                          size: 18,
                         ),
                       ],
                     ),
                   ),
-                )
-              : ListView.separated(
-                  padding: const EdgeInsets.all(18),
-                  itemCount: _vaultItems.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    final item = _vaultItems[index];
-                    final file = item['file'] as File;
-                    final fileName = item['fileName'] as String;
-                    final lectureId = item['lectureId'] as String;
-                    final subjectId = item['subjectId'] as String?;
-                    final title = item['title'] as String;
-                    final size = _getFileSize(file);
-
-                    return InkWell(
-                      borderRadius: BorderRadius.circular(16),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => ProtectedPdfViewerScreen(
-                              lectureId: lectureId,
-                              subjectId: subjectId,
-                              title: title,
-                            ),
-                          ),
-                        ).then((_) => _loadVaultFiles());
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: cardBg,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                              color: border.withOpacity(0.4), width: 1.2),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.18),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: cardSurface,
-                                shape: BoxShape.circle,
-                                border:
-                                    Border.all(color: border.withOpacity(0.6)),
-                              ),
-                              child: const Icon(Icons.picture_as_pdf_rounded,
-                                  color: goldAccent, size: 24),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    title,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 13.5,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      const Icon(Icons.lock_rounded,
-                                          color: Color(0xFF10B981), size: 12),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        'مشفر محلياً • $size',
-                                        style: TextStyle(
-                                          color: Colors.white.withOpacity(0.6),
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete_outline_rounded,
-                                  color: Color(0xFFEF4444), size: 22),
-                              onPressed: () => _deleteFile(file, fileName),
-                            ),
-                            const Icon(Icons.arrow_forward_ios_rounded,
-                                color: goldAccent, size: 18),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
+                );
+              },
+            ),
     );
   }
 }
