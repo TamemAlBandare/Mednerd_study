@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'auth_screen.dart';
 import 'home_screen.dart';
 
@@ -11,7 +12,8 @@ final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
 bool _isEffectivelyDark() {
   final mode = themeNotifier.value;
   if (mode == ThemeMode.system) {
-    return WidgetsBinding.instance.platformDispatcher.platformBrightness == Brightness.dark;
+    return WidgetsBinding.instance.platformDispatcher.platformBrightness ==
+        Brightness.dark;
   }
   return mode == ThemeMode.dark;
 }
@@ -30,8 +32,14 @@ Future<void> main() async {
   try {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString('theme_mode');
-    if (saved == 'light') themeNotifier.value = ThemeMode.light;
-    if (saved == 'dark') themeNotifier.value = ThemeMode.dark;
+    if (saved == 'light') {
+      themeNotifier.value = ThemeMode.light;
+    } else if (saved == 'dark') {
+      themeNotifier.value = ThemeMode.dark;
+    } else {
+      // أول فتح للتطبيق: يتم الاعتماد على ثيم الجهاز تلقائياً عبر ThemeMode.system
+      themeNotifier.value = ThemeMode.system;
+    }
   } catch (_) {}
 
   const supabaseUrl = String.fromEnvironment(
@@ -40,14 +48,10 @@ Future<void> main() async {
   );
   const supabaseAnonKey = String.fromEnvironment(
     'SUPABASE_ANON_KEY',
-    defaultValue:
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd1YmFvcmtqanFpY2xybmFoamR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwMTcyMTAsImV4cCI6MjEwNTU5MzIxMH0.mUwrnY4YlQN0pMwZjFC0cObDeh6htvobhlkLg8UmMTU',
+    defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd1YmFvcmtqanFpY2xybmFoamR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwMTcyMTAsImV4cCI6MjEwNTU5MzIxMH0.mUwrnY4YlQN0pMwZjFC0cObDeh6htvobhlkLg8UmMTU',
   );
 
-  await Supabase.initialize(
-    url: supabaseUrl,
-    anonKey: supabaseAnonKey,
-  );
+  await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
 
   runApp(const MedNerdApp());
 }
@@ -83,8 +87,8 @@ class MedNerdApp extends StatelessWidget {
             colorScheme: const ColorScheme.light(
               primary: Color(0xFF0E332E),
               secondary: Color(0xFFD8B467),
-              surface: Color(0xFFF3EFE6),
-              onSurface: Color(0xFF0E332E),
+              surface: Color(0xFF0E332E),
+              onSurface: Colors.white,
             ),
           ),
           darkTheme: ThemeData(
@@ -133,13 +137,19 @@ class _SplashScreenState extends State<SplashScreen>
 
     _scaleAnimation = TweenSequence<double>([
       TweenSequenceItem(
-          tween: Tween(begin: 0.7, end: 1.05)
-              .chain(CurveTween(curve: Curves.easeOutCubic)),
-          weight: 60),
+        tween: Tween(
+          begin: 0.7,
+          end: 1.05,
+        ).chain(CurveTween(curve: Curves.easeOutCubic)),
+        weight: 60,
+      ),
       TweenSequenceItem(
-          tween: Tween(begin: 1.05, end: 1.0)
-              .chain(CurveTween(curve: Curves.easeInOut)),
-          weight: 40),
+        tween: Tween(
+          begin: 1.05,
+          end: 1.0,
+        ).chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 40,
+      ),
     ]).animate(_controller);
 
     _fadeAnimation = CurvedAnimation(
@@ -147,13 +157,13 @@ class _SplashScreenState extends State<SplashScreen>
       curve: const Interval(0.35, 1.0, curve: Curves.easeIn),
     );
 
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.3),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: const Interval(0.35, 1.0, curve: Curves.easeOutCubic),
-    ));
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _controller,
+            curve: const Interval(0.35, 1.0, curve: Curves.easeOutCubic),
+          ),
+        );
 
     _controller.forward();
     _navigateToNext();
@@ -164,8 +174,9 @@ class _SplashScreenState extends State<SplashScreen>
     if (!mounted) return;
 
     final session = supabase.auth.currentSession;
-    final Widget targetScreen =
-        session != null ? const HomeScreen() : const AuthScreen();
+    final Widget targetScreen = session != null
+        ? const HomeScreen()
+        : const AuthScreen();
 
     Navigator.pushReplacement(
       context,
@@ -187,10 +198,19 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
-    const Color splashBg = Color(0xFF0B0F17);
-    const Color logoBoxBg = Color(0xFF151E2E);
-    const Color goldBorder = Color(0xFFC5A059);
-    const Color goldAccent = Color(0xFFD8B467);
+    // تحديد ما إذا كان الثيم الفعّال حالياً (سواء بناءً على الجهاز أو الاختيار الداخلي) هو الداكن أم الفاتح
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final splashBg = isDark ? const Color(0xFF0B0F17) : const Color(0xFFF3EFE6);
+    final logoBoxBg = isDark
+        ? const Color(0xFF151E2E)
+        : const Color(0xFF0E332E);
+    const goldBorder = Color(0xFFC5A059);
+    const goldAccent = Color(0xFFD8B467);
+    final titleColor = isDark ? Colors.white : const Color(0xFF0E332E);
+    final subtitleColor = isDark
+        ? const Color(0xFF94A3B8)
+        : const Color(0xFF15443E);
 
     return Scaffold(
       backgroundColor: splashBg,
@@ -202,10 +222,7 @@ class _SplashScreenState extends State<SplashScreen>
                 gradient: RadialGradient(
                   center: Alignment.center,
                   radius: 0.85,
-                  colors: [
-                    goldBorder.withOpacity(0.08),
-                    Colors.transparent,
-                  ],
+                  colors: [goldBorder.withOpacity(0.08), Colors.transparent],
                 ),
               ),
             ),
@@ -223,10 +240,7 @@ class _SplashScreenState extends State<SplashScreen>
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: logoBoxBg,
-                      border: Border.all(
-                        color: goldBorder,
-                        width: 2,
-                      ),
+                      border: Border.all(color: goldBorder, width: 2),
                       boxShadow: [
                         BoxShadow(
                           color: goldBorder.withOpacity(0.25),
@@ -257,7 +271,7 @@ class _SplashScreenState extends State<SplashScreen>
                               fontSize: 26,
                               fontWeight: FontWeight.w900,
                               letterSpacing: 2,
-                              color: Colors.white,
+                              color: titleColor,
                             ),
                             children: const [
                               TextSpan(text: 'MED'),
@@ -275,7 +289,7 @@ class _SplashScreenState extends State<SplashScreen>
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
                             letterSpacing: 0.5,
-                            color: const Color(0xFF94A3B8),
+                            color: subtitleColor,
                           ),
                         ),
                       ],
@@ -291,9 +305,10 @@ class _SplashScreenState extends State<SplashScreen>
                       borderRadius: BorderRadius.circular(10),
                       child: LinearProgressIndicator(
                         minHeight: 3,
-                        backgroundColor: logoBoxBg,
-                        valueColor:
-                            const AlwaysStoppedAnimation<Color>(goldAccent),
+                        backgroundColor: logoBoxBg.withOpacity(0.3),
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          goldAccent,
+                        ),
                       ),
                     ),
                   ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'main.dart';
 import 'youtube_lecture_screen.dart';
@@ -32,6 +33,11 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Map<String, dynamic>> _enrolledCourses = [];
   List<Map<String, dynamic>> _universities = [];
 
+  // منظومة الإشعارات الذكية
+  List<Map<String, dynamic>> _notifications = [];
+  Set<String> _readNotificationIds = {};
+  Set<String> _dismissedNotificationIds = {};
+
   static const Color lightScaffoldBg = Color(0xFFF3EFE6);
   static const Color lightEmeraldDark = Color(0xFF0E332E);
   static const Color lightEmeraldLight = Color(0xFF15443E);
@@ -49,6 +55,196 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadUserData();
+  }
+
+  String get _readPrefsKey {
+    final uid = supabase.auth.currentUser?.id ?? 'guest';
+    return 'read_notifications_$uid';
+  }
+
+  String get _dismissedPrefsKey {
+    final uid = supabase.auth.currentUser?.id ?? 'guest';
+    return 'dismissed_notifications_$uid';
+  }
+
+  int get _unreadNotificationsCount {
+    return _notifications
+        .where((n) => !_readNotificationIds.contains(n['id'].toString()))
+        .length;
+  }
+
+  Future<void> _loadNotificationStates() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final readList = prefs.getStringList(_readPrefsKey) ?? [];
+      final dismissedList = prefs.getStringList(_dismissedPrefsKey) ?? [];
+      _readNotificationIds = readList.toSet();
+      _dismissedNotificationIds = dismissedList.toSet();
+    } catch (_) {}
+  }
+
+  Future<void> _markNotificationAsRead(String id) async {
+    if (_readNotificationIds.contains(id)) return;
+    setState(() {
+      _readNotificationIds.add(id);
+    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_readPrefsKey, _readNotificationIds.toList());
+    } catch (_) {}
+  }
+
+  Future<void> _markAllNotificationsAsRead() async {
+    setState(() {
+      for (final n in _notifications) {
+        _readNotificationIds.add(n['id'].toString());
+      }
+    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_readPrefsKey, _readNotificationIds.toList());
+    } catch (_) {}
+  }
+
+  Future<void> _dismissNotification(String id) async {
+    setState(() {
+      _dismissedNotificationIds.add(id);
+      _notifications.removeWhere((n) => n['id'].toString() == id);
+    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(
+        _dismissedPrefsKey,
+        _dismissedNotificationIds.toList(),
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _buildSmartNotifications() async {
+    await _loadNotificationStates();
+    final List<Map<String, dynamic>> items = [];
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    // 1. محاولة جلب الإشعارات الإدارية المباشرة من جدول notifications (إن وجد في قاعدة البيانات)
+    try {
+      final remoteNotifs = await supabase
+          .from('notifications')
+          .select()
+          .or('user_id.is.null,user_id.eq.${user.id}')
+          .order('created_at', ascending: false)
+          .limit(15);
+
+      for (final raw in (remoteNotifs as List)) {
+        final map = Map<String, dynamic>.from(raw as Map);
+        final id = 'remote_${map['id']}';
+        if (_dismissedNotificationIds.contains(id)) continue;
+        items.add({
+          'id': id,
+          'category': map['category']?.toString() ?? 'admin',
+          'title': map['title']?.toString() ?? 'إشعار إداري',
+          'body': map['body']?.toString() ?? '',
+          'time_label': _formatRelativeTime(map['created_at']?.toString()),
+          'action_type': 'none',
+        });
+      }
+    } catch (_) {
+      // في حال لم يكن جدول notifications منشأً بعد، نعتمد على المحرك الذكي التلقائي أدناه
+    }
+
+    // 2. إشعار ذكي لمتابعة آخر محاضرة توقف عندها الطالب
+    if (_lastWatchedLecture != null && _lastLectureMap != null) {
+      final lecId = _lastLectureMap!['id']?.toString() ?? 'last';
+      final notifId = 'resume_$lecId';
+      if (!_dismissedNotificationIds.contains(notifId)) {
+        items.add({
+          'id': notifId,
+          'category': 'lecture',
+          'title': 'متابعة: $_lastLectureTitle',
+          'body':
+              'مقرر $_lastLectureSubjectTitle • وصلت إلى $_lastWatchProgressLabel',
+          'time_label': 'نشط الآن',
+          'action_type': 'resume_last',
+        });
+      }
+    }
+
+    // 3. جلب أحدث المحاضرات والملخصات المرفوعة في مقررات الطالب المفعلة
+    if (_enrolledCourses.isNotEmpty) {
+      try {
+        final subjectIds = _enrolledCourses
+            .map((c) => c['id'].toString())
+            .toList();
+        final recentLectures = await supabase
+            .from('lectures')
+            .select(
+              'id, title, subject_id, professor_id, video_url, pdf_url, telegram_pdf_id, duration_minutes, order_index',
+            )
+            .inFilter('subject_id', subjectIds)
+            .order('order_index', ascending: false)
+            .limit(8);
+
+        for (final rawLec in (recentLectures as List)) {
+          final lec = Map<String, dynamic>.from(rawLec as Map);
+          final lecId = lec['id'].toString();
+          final notifId = 'lec_new_$lecId';
+          if (_dismissedNotificationIds.contains(notifId)) continue;
+
+          final courseMatch = _enrolledCourses.firstWhere(
+            (c) => c['id'].toString() == lec['subject_id'].toString(),
+            orElse: () => {'name': 'مقرر دراسي', 'professor_name': ''},
+          );
+          final subjectName = courseMatch['name']?.toString() ?? 'مقرر دراسي';
+          final hasPdf =
+              (lec['pdf_url']?.toString().trim().isNotEmpty ?? false) ||
+              (lec['telegram_pdf_id']?.toString().trim().isNotEmpty ?? false);
+
+          items.add({
+            'id': notifId,
+            'category': 'lecture',
+            'title': lec['title']?.toString() ?? 'محاضرة متاحة',
+            'body': hasPdf
+                ? '$subjectName • الفيديو وملخص الـ PDF متاحان للمشاهدة'
+                : '$subjectName • المحاضرة متاحة للمشاهدة والاختبار',
+            'time_label': 'مقرر مفعّل',
+            'action_type': 'open_lecture',
+            'lecture_data': lec,
+            'subject_title': subjectName,
+          });
+        }
+      } catch (_) {}
+    }
+
+    // 4. إشعار حالة الأمان وتوثيق الجهاز
+    const secId = 'security_device_verified';
+    if (!_dismissedNotificationIds.contains(secId)) {
+      items.add({
+        'id': secId,
+        'category': 'security',
+        'title': 'حماية الحساب والخزنة المفعّلة',
+        'body': _enrolledCourses.isNotEmpty
+            ? 'حسابك موثق ببصمة الجهاز ومرتبط بـ ${_enrolledCourses.length} مقررات نشطة.'
+            : 'حسابك جاهز ومؤمّن ببصمة الجهاز الفردية.',
+        'time_label': 'نظام الأمان',
+        'action_type': 'open_profile',
+      });
+    }
+
+    if (mounted) {
+      setState(() {
+        _notifications = items;
+      });
+    }
+  }
+
+  String _formatRelativeTime(String? iso) {
+    if (iso == null || iso.isEmpty) return 'حديثاً';
+    final dt = DateTime.tryParse(iso);
+    if (dt == null) return 'حديثاً';
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 60) return 'منذ ${diff.inMinutes.clamp(1, 59)} د';
+    if (diff.inHours < 24) return 'منذ ${diff.inHours} س';
+    return 'منذ ${diff.inDays} يوم';
   }
 
   Future<void> _loadUserData() async {
@@ -130,6 +326,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
         final progress = await WatchProgressService.getLastProgress();
         _lastWatchedLecture = progress;
+
+        await _buildSmartNotifications();
       }
     } catch (e) {
       debugPrint('Error loading user data: $e');
@@ -258,13 +456,445 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _handleLogout() async {
+    setState(() {
+      _studentName = '';
+      _lastWatchedLecture = null;
+      _enrolledCourses.clear();
+      _notifications.clear();
+      _readNotificationIds.clear();
+    });
     await supabase.auth.signOut();
     if (mounted) {
-      Navigator.pushReplacement(
+      Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (_) => const AuthScreen()),
+        (route) => false,
       );
     }
+  }
+
+  void _showNotificationsSheet(bool isDark) {
+    final sheetBg = isDark ? darkCardBg : lightEmeraldDark;
+    final surfaceBg = isDark ? darkCardSurface : lightEmeraldLight;
+    final borderColor = isDark ? darkGoldBorder : lightGoldBorder;
+    String activeFilter = 'all'; // all | unread | lecture
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            final filteredList = _notifications.where((n) {
+              final id = n['id'].toString();
+              if (activeFilter == 'unread') {
+                return !_readNotificationIds.contains(id);
+              }
+              if (activeFilter == 'lecture') {
+                return n['category'] == 'lecture';
+              }
+              return true;
+            }).toList();
+
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.76,
+              decoration: BoxDecoration(
+                color: sheetBg,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(28),
+                ),
+                border: Border(top: BorderSide(color: borderColor, width: 1.5)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.35),
+                    blurRadius: 25,
+                    offset: const Offset(0, -6),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  const SizedBox(height: 12),
+                  Container(
+                    width: 44,
+                    height: 4.5,
+                    decoration: BoxDecoration(
+                      color: goldAccent.withOpacity(0.45),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(9),
+                          decoration: BoxDecoration(
+                            color: surfaceBg,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: borderColor.withOpacity(0.7),
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.notifications_active_rounded,
+                            color: goldAccent,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'مركز الإشعارات والتنبيهات',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                _unreadNotificationsCount > 0
+                                    ? 'لديك $_unreadNotificationsCount تنبيهات غير مقروءة'
+                                    : 'جميع التنبيهات مقروءة',
+                                style: TextStyle(
+                                  color: goldAccent.withOpacity(0.85),
+                                  fontSize: 11.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (_unreadNotificationsCount > 0)
+                          TextButton.icon(
+                            onPressed: () async {
+                              await _markAllNotificationsAsRead();
+                              setSheetState(() {});
+                            },
+                            style: TextButton.styleFrom(
+                              foregroundColor: goldAccent,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                            ),
+                            icon: const Icon(Icons.done_all_rounded, size: 16),
+                            label: const Text(
+                              'قراءة الكل',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 6,
+                    ),
+                    child: Row(
+                      children: [
+                        _buildFilterChip(
+                          label: 'الكل (${_notifications.length})',
+                          selected: activeFilter == 'all',
+                          surfaceBg: surfaceBg,
+                          borderColor: borderColor,
+                          onTap: () =>
+                              setSheetState(() => activeFilter = 'all'),
+                        ),
+                        const SizedBox(width: 8),
+                        _buildFilterChip(
+                          label: 'غير مقروءة ($_unreadNotificationsCount)',
+                          selected: activeFilter == 'unread',
+                          surfaceBg: surfaceBg,
+                          borderColor: borderColor,
+                          onTap: () =>
+                              setSheetState(() => activeFilter = 'unread'),
+                        ),
+                        const SizedBox(width: 8),
+                        _buildFilterChip(
+                          label: 'المحاضرات',
+                          selected: activeFilter == 'lecture',
+                          surfaceBg: surfaceBg,
+                          borderColor: borderColor,
+                          onTap: () =>
+                              setSheetState(() => activeFilter = 'lecture'),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Divider(color: borderColor.withOpacity(0.25), height: 18),
+                  Expanded(
+                    child: filteredList.isEmpty
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(28),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(18),
+                                    decoration: BoxDecoration(
+                                      color: surfaceBg,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: borderColor.withOpacity(0.5),
+                                      ),
+                                    ),
+                                    child: const Icon(
+                                      Icons.notifications_off_outlined,
+                                      color: goldAccent,
+                                      size: 36,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 14),
+                                  const Text(
+                                    'لا توجد إشعارات في هذا القسم',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        : ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(18, 6, 18, 24),
+                            itemCount: filteredList.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 10),
+                            itemBuilder: (context, index) {
+                              final item = filteredList[index];
+                              final id = item['id'].toString();
+                              final isRead = _readNotificationIds.contains(id);
+                              final category =
+                                  item['category']?.toString() ?? 'admin';
+
+                              IconData itemIcon = Icons.campaign_rounded;
+                              if (category == 'lecture') {
+                                itemIcon = Icons.play_lesson_rounded;
+                              } else if (category == 'security') {
+                                itemIcon = Icons.verified_user_rounded;
+                              }
+
+                              return Dismissible(
+                                key: ValueKey(id),
+                                direction: DismissDirection.horizontal,
+                                onDismissed: (_) async {
+                                  await _dismissNotification(id);
+                                  setSheetState(() {});
+                                },
+                                background: Container(
+                                  alignment: Alignment.centerRight,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 20,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFEF4444)
+                                        .withOpacity(0.25),
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: const Icon(
+                                    Icons.delete_outline_rounded,
+                                    color: Color(0xFFEF4444),
+                                  ),
+                                ),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(16),
+                                  onTap: () async {
+                                    await _markNotificationAsRead(id);
+                                    setSheetState(() {});
+                                    final action = item['action_type']
+                                        ?.toString();
+                                    if (action == 'resume_last') {
+                                      if (mounted) Navigator.pop(ctx);
+                                      _openLastWatched();
+                                    } else if (action == 'open_lecture' &&
+                                        item['lecture_data'] != null) {
+                                      final lec = Map<String, dynamic>.from(
+                                        item['lecture_data'] as Map,
+                                      );
+                                      final subTitle =
+                                          item['subject_title']?.toString() ??
+                                          'مقرر دراسي';
+                                      if (mounted) {
+                                        Navigator.pop(ctx);
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => LecturePlayerRouter(
+                                              currentLecture: lec,
+                                              allLectures: [lec],
+                                              subjectTitle: subTitle,
+                                            ),
+                                          ),
+                                        ).then((_) => _loadUserData());
+                                      }
+                                    } else if (action == 'open_profile') {
+                                      if (mounted) {
+                                        Navigator.pop(ctx);
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                const ProfileScreen(),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.all(14),
+                                    decoration: BoxDecoration(
+                                      color: isRead
+                                          ? surfaceBg.withOpacity(0.55)
+                                          : surfaceBg,
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(
+                                        color: isRead
+                                            ? borderColor.withOpacity(0.25)
+                                            : goldAccent,
+                                        width: isRead ? 1 : 1.3,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.all(10),
+                                          decoration: BoxDecoration(
+                                            color: sheetBg,
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                            border: Border.all(
+                                              color: borderColor.withOpacity(
+                                                0.5,
+                                              ),
+                                            ),
+                                          ),
+                                          child: Icon(
+                                            itemIcon,
+                                            color: goldAccent,
+                                            size: 20,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: Text(
+                                                      item['title']
+                                                              ?.toString() ??
+                                                          '',
+                                                      style: TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 13.5,
+                                                        fontWeight: isRead
+                                                            ? FontWeight.w600
+                                                            : FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  if (!isRead)
+                                                    Container(
+                                                      width: 8,
+                                                      height: 8,
+                                                      decoration:
+                                                          const BoxDecoration(
+                                                            color: goldAccent,
+                                                            shape:
+                                                                BoxShape.circle,
+                                                          ),
+                                                    ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                item['body']?.toString() ?? '',
+                                                style: TextStyle(
+                                                  color: Colors.white
+                                                      .withOpacity(0.75),
+                                                  fontSize: 12,
+                                                  height: 1.35,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 6),
+                                              Text(
+                                                item['time_label']
+                                                        ?.toString() ??
+                                                    '',
+                                                style: TextStyle(
+                                                  color: goldAccent.withOpacity(
+                                                    0.85,
+                                                  ),
+                                                  fontSize: 10.5,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildFilterChip({
+    required String label,
+    required bool selected,
+    required Color surfaceBg,
+    required Color borderColor,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? goldAccent : surfaceBg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? goldAccent : borderColor.withOpacity(0.45),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? Colors.black : Colors.white,
+            fontSize: 11.5,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
   }
 
   void _showSupportDialog(bool isDark) {
@@ -649,6 +1279,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final scaffoldBg = isDark ? darkScaffoldBg : lightScaffoldBg;
     final appBarColor = isDark ? darkCardBg : lightEmeraldDark;
+    final unreadCount = _unreadNotificationsCount;
 
     return Scaffold(
       key: _scaffoldKey,
@@ -681,15 +1312,55 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             onPressed: toggleTheme,
           ),
-          IconButton(
-            tooltip: 'الإشعارات',
-            icon: const Icon(
-              Icons.notifications_none_rounded,
-              color: goldAccent,
-              size: 22,
-            ),
-            onPressed: () {},
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              IconButton(
+                tooltip: 'الإشعارات',
+                icon: Icon(
+                  unreadCount > 0
+                      ? Icons.notifications_active_rounded
+                      : Icons.notifications_none_rounded,
+                  color: goldAccent,
+                  size: 23,
+                ),
+                onPressed: () => _showNotificationsSheet(isDark),
+              ),
+              if (unreadCount > 0)
+                Positioned(
+                  top: 10,
+                  right: 10,
+                  child: IgnorePointer(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4.5,
+                        vertical: 1,
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 16,
+                        minHeight: 16,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEF4444),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: appBarColor, width: 1.5),
+                      ),
+                      child: Center(
+                        child: Text(
+                          unreadCount > 9 ? '9+' : '$unreadCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
+          const SizedBox(width: 4),
         ],
       ),
       body: RefreshIndicator(
@@ -702,10 +1373,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   SliverToBoxAdapter(child: _buildHeader(isDark)),
                   if (_lastWatchedLecture != null)
                     SliverToBoxAdapter(child: _buildContinueWatching(isDark)),
-                  SliverToBoxAdapter(child: _buildUniversitySection(isDark)),
                   SliverToBoxAdapter(
                     child: _buildEnrolledCoursesSection(isDark),
                   ),
+                  SliverToBoxAdapter(child: _buildUniversitySection(isDark)),
                   const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
                 ],
               ),
@@ -772,6 +1443,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final totalSec = _lastWatchDurationSeconds;
     final fraction = _lastWatchProgressFraction;
     final percentText = totalSec > 0 ? '${(fraction * 100).round()}%' : '';
+    final cardBgColor = isDark ? darkCardBg : lightEmeraldDark;
+    final cardBorderColor = isDark ? darkGoldBorder : lightGoldBorder;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 22, 20, 0),
@@ -791,15 +1464,15 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: isDark ? darkCardBg : Colors.white,
+                color: cardBgColor,
                 borderRadius: BorderRadius.circular(18),
                 border: Border.all(
-                  color: (isDark ? darkGoldBorder : lightGoldBorder)
-                      .withOpacity(0.25),
+                  color: cardBorderColor.withOpacity(0.7),
+                  width: 1.2,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
+                    color: Colors.black.withOpacity(0.12),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -814,10 +1487,11 @@ class _HomeScreenState extends State<HomeScreen> {
                         width: 58,
                         height: 58,
                         decoration: BoxDecoration(
-                          color: isDark
-                              ? darkCardSurface
-                              : lightEmeraldDark.withOpacity(0.08),
+                          color: isDark ? darkCardSurface : lightEmeraldLight,
                           borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: cardBorderColor.withOpacity(0.6),
+                          ),
                         ),
                         child: const Center(
                           child: CircleAvatar(
@@ -840,10 +1514,10 @@ class _HomeScreenState extends State<HomeScreen> {
                               _lastLectureTitle,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
+                              style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 14.5,
-                                color: isDark ? Colors.white : lightEmeraldDark,
+                                color: Colors.white,
                               ),
                             ),
                             const SizedBox(height: 3),
@@ -852,9 +1526,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                color: isDark
-                                    ? Colors.white70
-                                    : Colors.grey.shade600,
+                                color: Colors.white.withOpacity(0.75),
                                 fontSize: 12,
                               ),
                             ),
@@ -869,10 +1541,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                 const SizedBox(width: 4),
                                 Text(
                                   _lastWatchProgressLabel,
-                                  style: TextStyle(
-                                    color: isDark
-                                        ? goldAccent
-                                        : lightEmeraldDark,
+                                  style: const TextStyle(
+                                    color: goldAccent,
                                     fontSize: 11.5,
                                     fontWeight: FontWeight.bold,
                                   ),
@@ -884,7 +1554,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       const Icon(
                         Icons.chevron_right_rounded,
-                        color: Colors.grey,
+                        color: goldAccent,
                       ),
                     ],
                   ),
@@ -897,7 +1567,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: LinearProgressIndicator(
                             value: totalSec > 0 ? fraction : 0.15,
                             minHeight: 5,
-                            backgroundColor: Colors.grey.withOpacity(0.2),
+                            backgroundColor: Colors.white24,
                             valueColor: const AlwaysStoppedAnimation<Color>(
                               goldAccent,
                             ),
@@ -908,10 +1578,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         const SizedBox(width: 10),
                         Text(
                           percentText,
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.bold,
-                            color: isDark ? goldAccent : lightEmeraldDark,
+                            color: goldAccent,
                           ),
                         ),
                       ],
@@ -926,142 +1596,46 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildUniversitySection(bool isDark) {
-    if (_universities.isEmpty) return const SizedBox.shrink();
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(0, 22, 0, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-            child: Text(
-              'الجامعات',
-              style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.bold),
-            ),
-          ),
-          SizedBox(
-            height: 135,
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              scrollDirection: Axis.horizontal,
-              itemCount: _universities.length,
-              itemBuilder: (ctx, idx) {
-                final uni = _universities[idx];
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => UniversityFacultiesScreen(
-                            universityId: uni['id'].toString(),
-                            universityName: uni['name']?.toString() ?? '',
-                          ),
-                        ),
-                      ).then((_) => _loadUserData());
-                    },
-                    child: Container(
-                      width: 120,
-                      decoration: BoxDecoration(
-                        color: isDark ? darkCardBg : Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: (isDark ? darkGoldBorder : lightGoldBorder)
-                              .withOpacity(0.2),
-                        ),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.all(14),
-                              child: uni['logo_url'] != null
-                                  ? Image.network(
-                                      uni['logo_url'],
-                                      errorBuilder: (_, __, ___) => const Icon(
-                                        Icons.account_balance_rounded,
-                                        size: 38,
-                                        color: goldAccent,
-                                      ),
-                                    )
-                                  : const Icon(
-                                      Icons.account_balance_rounded,
-                                      size: 38,
-                                      color: goldAccent,
-                                    ),
-                            ),
-                          ),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 8,
-                              horizontal: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: isDark
-                                  ? darkCardSurface
-                                  : lightEmeraldLight.withOpacity(0.05),
-                              borderRadius: const BorderRadius.only(
-                                bottomLeft: Radius.circular(20),
-                                bottomRight: Radius.circular(20),
-                              ),
-                            ),
-                            child: Text(
-                              uni['name'] ?? '',
-                              textAlign: TextAlign.center,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildEnrolledCoursesSection(bool isDark) {
+    final cardBgColor = isDark ? darkCardBg : lightEmeraldDark;
+    final cardBorderColor = isDark ? darkGoldBorder : lightGoldBorder;
+
     if (_enrolledCourses.isEmpty) {
       return Padding(
-        padding: const EdgeInsets.fromLTRB(24, 26, 24, 0),
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 26, horizontal: 20),
           decoration: BoxDecoration(
-            color: isDark ? darkCardBg : Colors.white,
+            color: cardBgColor,
             borderRadius: BorderRadius.circular(22),
             border: Border.all(
-              color: (isDark ? darkGoldBorder : lightGoldBorder).withOpacity(
-                0.2,
-              ),
+              color: cardBorderColor.withOpacity(0.7),
+              width: 1.2,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.12),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           child: Column(
             children: [
               Icon(
                 Icons.school_outlined,
                 size: 44,
-                color: goldAccent.withOpacity(0.6),
+                color: goldAccent.withOpacity(0.8),
               ),
               const SizedBox(height: 12),
               const Text(
                 'لا توجد مقررات مفعلة',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15.5),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15.5,
+                  color: Colors.white,
+                ),
               ),
               const SizedBox(height: 16),
               ElevatedButton(
@@ -1127,15 +1701,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   },
                   child: Container(
                     decoration: BoxDecoration(
-                      color: isDark ? darkCardBg : Colors.white,
+                      color: cardBgColor,
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(
-                        color: (isDark ? darkGoldBorder : lightGoldBorder)
-                            .withOpacity(0.18),
+                        color: cardBorderColor.withOpacity(0.7),
+                        width: 1.2,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.04),
+                          color: Colors.black.withOpacity(0.12),
                           blurRadius: 10,
                           offset: const Offset(0, 4),
                         ),
@@ -1149,8 +1723,13 @@ class _HomeScreenState extends State<HomeScreen> {
                             width: 54,
                             height: 54,
                             decoration: BoxDecoration(
-                              color: isDark ? darkCardSurface : lightScaffoldBg,
+                              color: isDark
+                                  ? darkCardSurface
+                                  : lightEmeraldLight,
                               borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: cardBorderColor.withOpacity(0.6),
+                              ),
                             ),
                             child: const Icon(
                               Icons.menu_book_rounded,
@@ -1168,6 +1747,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   style: const TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 15,
+                                    color: Colors.white,
                                   ),
                                 ),
                                 if (profName.isNotEmpty) ...[
@@ -1175,7 +1755,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   Text(
                                     'د. $profName',
                                     style: TextStyle(
-                                      color: Colors.grey.shade600,
+                                      color: Colors.white.withOpacity(0.75),
                                       fontSize: 12,
                                     ),
                                   ),
@@ -1186,7 +1766,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           const Icon(
                             Icons.arrow_forward_ios_rounded,
                             size: 15,
-                            color: Colors.grey,
+                            color: goldAccent,
                           ),
                         ],
                       ),
@@ -1195,6 +1775,130 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               );
             },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUniversitySection(bool isDark) {
+    if (_universities.isEmpty) return const SizedBox.shrink();
+    final cardBgColor = isDark ? darkCardBg : lightEmeraldDark;
+    final cardBorderColor = isDark ? darkGoldBorder : lightGoldBorder;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 22, 0, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+            child: Text(
+              'الجامعات',
+              style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.bold),
+            ),
+          ),
+          SizedBox(
+            height: 135,
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              scrollDirection: Axis.horizontal,
+              itemCount: _universities.length,
+              itemBuilder: (ctx, idx) {
+                final uni = _universities[idx];
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => UniversityFacultiesScreen(
+                            universityId: uni['id'].toString(),
+                            universityName: uni['name']?.toString() ?? '',
+                          ),
+                        ),
+                      ).then((_) => _loadUserData());
+                    },
+                    child: Container(
+                      width: 120,
+                      decoration: BoxDecoration(
+                        color: cardBgColor,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: cardBorderColor.withOpacity(0.7),
+                          width: 1.2,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.12),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: uni['logo_url'] != null
+                                  ? Image.network(
+                                      uni['logo_url'],
+                                      errorBuilder: (_, __, ___) => const Icon(
+                                        Icons.account_balance_rounded,
+                                        size: 38,
+                                        color: goldAccent,
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.account_balance_rounded,
+                                      size: 38,
+                                      color: goldAccent,
+                                    ),
+                            ),
+                          ),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 8,
+                              horizontal: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isDark
+                                  ? darkCardSurface
+                                  : lightEmeraldLight,
+                              borderRadius: const BorderRadius.only(
+                                bottomLeft: Radius.circular(20),
+                                bottomRight: Radius.circular(20),
+                              ),
+                              border: Border(
+                                top: BorderSide(
+                                  color: cardBorderColor.withOpacity(0.5),
+                                ),
+                              ),
+                            ),
+                            child: Text(
+                              uni['name'] ?? '',
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
         ],
       ),
@@ -1401,8 +2105,8 @@ class _HomeScreenState extends State<HomeScreen> {
     required VoidCallback onTap,
   }) {
     final isSelected = _selectedDrawerIndex == index;
-    final activeTextColor = isDark ? goldAccent : lightEmeraldDark;
-    final inactiveTextColor = isDark ? Colors.white70 : Colors.black87;
+    const activeTextColor = goldAccent;
+    final inactiveTextColor = isDark ? Colors.white70 : lightEmeraldDark;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
@@ -1431,7 +2135,9 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 Icon(
                   icon,
-                  color: isSelected ? goldAccent : Colors.grey.shade500,
+                  color: isSelected
+                      ? goldAccent
+                      : inactiveTextColor.withOpacity(0.8),
                   size: 22,
                 ),
                 const SizedBox(width: 14),
@@ -1442,7 +2148,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       color: isSelected ? activeTextColor : inactiveTextColor,
                       fontWeight: isSelected
                           ? FontWeight.bold
-                          : FontWeight.w500,
+                          : FontWeight.w600,
                       fontSize: 14,
                     ),
                   ),

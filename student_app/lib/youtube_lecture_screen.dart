@@ -10,6 +10,7 @@ import 'bookmarks_service.dart';
 import 'pdf_viewer_screen.dart';
 import 'quiz_screen.dart';
 import 'security_service.dart';
+import 'vault_security_service.dart';
 import 'watch_progress_service.dart';
 import 'video_player_screen.dart';
 import 'theme/app_theme.dart';
@@ -24,7 +25,7 @@ String? youtubeIdFromUrl(String? url) {
   return m?.group(1);
 }
 
-class LecturePlayerRouter extends StatelessWidget {
+class LecturePlayerRouter extends StatefulWidget {
   final Map<String, dynamic> currentLecture;
   final List<Map<String, dynamic>> allLectures;
   final String subjectTitle;
@@ -41,24 +42,166 @@ class LecturePlayerRouter extends StatelessWidget {
   });
 
   @override
+  State<LecturePlayerRouter> createState() => _LecturePlayerRouterState();
+}
+
+class _LecturePlayerRouterState extends State<LecturePlayerRouter> {
+  bool _checkingAccess = true;
+  String? _accessError;
+
+  @override
+  void initState() {
+    super.initState();
+    _verifyAccess();
+  }
+
+  Future<void> _verifyAccess() async {
+    setState(() {
+      _checkingAccess = true;
+      _accessError = null;
+    });
+
+    final subjectId = widget.currentLecture['subject_id']?.toString() ?? '';
+    final professorId = widget.currentLecture['professor_id']?.toString();
+
+    if (subjectId.isEmpty) {
+      if (mounted) {
+        setState(() => _checkingAccess = false);
+      }
+      return;
+    }
+
+    final check = await VaultSecurityService.verifyOnlineAccess(
+      subjectId: subjectId,
+      professorId: professorId,
+    );
+
+    if (!mounted) return;
+    if (check['ok'] == true) {
+      setState(() => _checkingAccess = false);
+    } else {
+      setState(() {
+        _checkingAccess = false;
+        _accessError =
+            check['message']?.toString() ?? 'تعذر التحقق من صلاحية الاشتراك.';
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scaffoldBg = isDark
+        ? AppColors.darkScaffoldBg
+        : AppColors.lightScaffoldBg;
+    final cardBg = isDark ? AppColors.darkCardBg : AppColors.lightEmeraldDark;
+
+    if (_checkingAccess) {
+      return Scaffold(
+        backgroundColor: scaffoldBg,
+        body: const Center(
+          child: CircularProgressIndicator(color: AppColors.goldAccent),
+        ),
+      );
+    }
+
+    if (_accessError != null) {
+      return Scaffold(
+        backgroundColor: scaffoldBg,
+        appBar: AppBar(
+          backgroundColor: cardBg,
+          foregroundColor: Colors.white,
+          title: Text(
+            widget.subjectTitle,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Container(
+              padding: const EdgeInsets.all(22),
+              decoration: BoxDecoration(
+                color: cardBg,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: AppColors.goldBorder.withOpacity(0.6),
+                  width: 1.2,
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.gpp_bad_rounded,
+                    color: AppColors.error,
+                    size: 48,
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    _accessError!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      OutlinedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white70,
+                          side: BorderSide(
+                            color: AppColors.goldBorder.withOpacity(0.5),
+                          ),
+                        ),
+                        child: const Text('رجوع'),
+                      ),
+                      const SizedBox(width: 12),
+                      ElevatedButton(
+                        onPressed: _verifyAccess,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.goldAccent,
+                          foregroundColor: Colors.black,
+                        ),
+                        child: const Text(
+                          'إعادة المحاولة',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     final isYoutube =
-        youtubeIdFromUrl(currentLecture['video_url']?.toString()) != null;
+        youtubeIdFromUrl(widget.currentLecture['video_url']?.toString()) !=
+        null;
     if (isYoutube) {
       return YoutubeLectureScreen(
-        currentLecture: currentLecture,
-        allLectures: allLectures,
-        subjectTitle: subjectTitle,
-        studentIdentifier: studentIdentifier,
-        startAtSeconds: startAtSeconds,
+        currentLecture: widget.currentLecture,
+        allLectures: widget.allLectures,
+        subjectTitle: widget.subjectTitle,
+        studentIdentifier: widget.studentIdentifier,
+        startAtSeconds: widget.startAtSeconds,
       );
     }
     return VideoPlayerScreen(
-      currentLecture: currentLecture,
-      allLectures: allLectures,
-      subjectTitle: subjectTitle,
-      studentIdentifier: studentIdentifier,
-      startAtSeconds: startAtSeconds,
+      currentLecture: widget.currentLecture,
+      allLectures: widget.allLectures,
+      subjectTitle: widget.subjectTitle,
+      studentIdentifier: widget.studentIdentifier,
+      startAtSeconds: widget.startAtSeconds,
     );
   }
 }
@@ -241,6 +384,28 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
   }
 
   Future<void> _open(Map<String, dynamic> lecture) async {
+    final subjectId = lecture['subject_id']?.toString() ?? '';
+    if (subjectId.isNotEmpty) {
+      final check = await VaultSecurityService.verifyOnlineAccess(
+        subjectId: subjectId,
+        professorId: lecture['professor_id']?.toString(),
+      );
+      if (check['ok'] != true) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
+            content: Text(
+              check['message']?.toString() ?? 'انتهت صلاحية الاشتراك.',
+            ),
+          ),
+        );
+        Navigator.pop(context);
+        return;
+      }
+    }
+
     final id = youtubeIdFromUrl(lecture['video_url']?.toString());
     if (id != null) {
       await _saveProgress();
@@ -255,6 +420,7 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
       _yt.loadVideoById(videoId: id);
       _loadDescription();
     } else {
+      if (!mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -437,7 +603,7 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
                         behavior: SnackBarBehavior.floating,
                         content: Text(
                           added
-                              ? 'تمت إضافة المحاضرة للمفضلة 🌟'
+                              ? 'تمت إضافة المحاضرة للمفضلة'
                               : 'تمت إزالة المحاضرة من المفضلة',
                           style: const TextStyle(color: Colors.white),
                         ),
