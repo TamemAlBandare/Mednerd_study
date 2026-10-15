@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'main.dart';
@@ -126,7 +127,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final user = supabase.auth.currentUser;
     if (user == null) return;
 
-    // 1. محاولة جلب الإشعارات الإدارية المباشرة من جدول notifications (إن وجد في قاعدة البيانات)
     try {
       final remoteNotifs = await supabase
           .from('notifications')
@@ -148,11 +148,8 @@ class _HomeScreenState extends State<HomeScreen> {
           'action_type': 'none',
         });
       }
-    } catch (_) {
-      // في حال لم يكن جدول notifications منشأً بعد، نعتمد على المحرك الذكي التلقائي أدناه
-    }
+    } catch (_) {}
 
-    // 2. إشعار ذكي لمتابعة آخر محاضرة توقف عندها الطالب
     if (_lastWatchedLecture != null && _lastLectureMap != null) {
       final lecId = _lastLectureMap!['id']?.toString() ?? 'last';
       final notifId = 'resume_$lecId';
@@ -169,7 +166,6 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    // 3. جلب أحدث المحاضرات والملخصات المرفوعة في مقررات الطالب المفعلة
     if (_enrolledCourses.isNotEmpty) {
       try {
         final subjectIds = _enrolledCourses
@@ -215,7 +211,6 @@ class _HomeScreenState extends State<HomeScreen> {
       } catch (_) {}
     }
 
-    // 4. إشعار حالة الأمان وتوثيق الجهاز
     const secId = 'security_device_verified';
     if (!_dismissedNotificationIds.contains(secId)) {
       items.add({
@@ -477,7 +472,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final sheetBg = isDark ? darkCardBg : lightEmeraldDark;
     final surfaceBg = isDark ? darkCardSurface : lightEmeraldLight;
     final borderColor = isDark ? darkGoldBorder : lightGoldBorder;
-    String activeFilter = 'all'; // all | unread | lecture
+    String activeFilter = 'all';
 
     showModalBottomSheet(
       context: context,
@@ -923,13 +918,76 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
-        content: Text(
-          'للاستفسارات أو فك ارتباط الأجهزة، يرجى التواصل مع إدارة المنصة.',
-          style: TextStyle(
-            color: Colors.white.withOpacity(0.8),
-            fontSize: 13,
-            height: 1.45,
-          ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'للاستفسارات أو فك ارتباط الأجهزة، يرجى التواصل مع إدارة المنصة عبر الرقم التالي:',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.8),
+                fontSize: 13,
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 14),
+            InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () async {
+                await Clipboard.setData(
+                  const ClipboardData(text: '0938409860'),
+                );
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(
+                      backgroundColor: Color(0xFF10B981),
+                      behavior: SnackBarBehavior.floating,
+                      content: Text('تم نسخ رقم التواصل إلى الحافظة'),
+                    ),
+                  );
+                }
+              },
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: isDark ? darkCardSurface : lightEmeraldLight,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: dialogBorder.withOpacity(0.5)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.phone_rounded,
+                      color: goldAccent,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 10),
+                    const SelectableText(
+                      '0938409860',
+                      textDirection: TextDirection.ltr,
+                      style: TextStyle(
+                        color: goldAccent,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(
+                      Icons.copy_rounded,
+                      color: goldAccent.withOpacity(0.7),
+                      size: 16,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(

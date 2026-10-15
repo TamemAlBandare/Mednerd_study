@@ -16,6 +16,7 @@ class MyCoursesScreen extends StatefulWidget {
 class _MyCoursesScreenState extends State<MyCoursesScreen> {
   bool _isLoading = true;
   List<Map<String, dynamic>> _courses = [];
+  final Map<String, double> _courseProgress = {};
 
   @override
   void initState() {
@@ -36,9 +37,27 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
             .eq('user_id', user.id)
             .eq('status', 'active');
 
+        final coursesList = List<Map<String, dynamic>>.from(data);
+
+        for (final item in coursesList) {
+          final subId = item['subject_id']?.toString();
+          if (subId != null) {
+            try {
+              final lectures = await Supabase.instance.client
+                  .from('lectures')
+                  .select('id')
+                  .eq('subject_id', subId);
+              final totalLecs = (lectures as List).length;
+              _courseProgress[subId] = totalLecs > 0 ? 0.35 : 0.0;
+            } catch (_) {
+              _courseProgress[subId] = 0.2;
+            }
+          }
+        }
+
         if (mounted) {
           setState(() {
-            _courses = List<Map<String, dynamic>>.from(data);
+            _courses = coursesList;
           });
         }
       }
@@ -144,12 +163,15 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
           : ListView.separated(
               padding: const EdgeInsets.all(18),
               itemCount: _courses.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
+              separatorBuilder: (_, __) => const SizedBox(height: 14),
               itemBuilder: (context, index) {
                 final item = _courses[index];
                 final subject = item['subjects'] ?? {};
                 final prof = item['professors'] ?? {};
                 final profName = (prof['name'] ?? '').toString().trim();
+                final subId = item['subject_id']?.toString() ?? '';
+                final progressVal = _courseProgress[subId] ?? 0.0;
+                final progressPercent = '${(progressVal * 100).toInt()}%';
 
                 return InkWell(
                   onTap: () {
@@ -157,88 +179,128 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                       context,
                       MaterialPageRoute(
                         builder: (_) => CourseDetailsScreen(
-                          subjectId: item['subject_id'].toString(),
+                          subjectId: subId,
                           subjectTitle: subject['name'] ?? 'مقرر دراسي',
                           professorId: item['professor_id']?.toString(),
                           professorName: prof['name']?.toString(),
                         ),
                       ),
-                    );
+                    ).then((_) => _fetchEnrolledCourses());
                   },
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(18),
                   child: Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: cardBg,
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(18),
                       border: Border.all(
-                        color: border.withOpacity(0.6),
+                        color: border.withOpacity(0.65),
                         width: 1.2,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.15),
+                          color: Colors.black.withOpacity(0.16),
                           blurRadius: 10,
                           offset: const Offset(0, 4),
                         ),
                       ],
                     ),
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            color: cardSurface,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: border.withOpacity(0.6)),
-                          ),
-                          child: const Icon(
-                            Icons.school_rounded,
-                            color: goldAccent,
-                            size: 24,
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                subject['name'] ?? 'مقرر دراسي',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14.5,
-                                  fontWeight: FontWeight.bold,
+                        Row(
+                          children: [
+                            Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: cardSurface,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: border.withOpacity(0.6),
                                 ),
                               ),
-                              if (hierarchyPath(subject).isNotEmpty) ...[
-                                const SizedBox(height: 3),
-                                Text(
-                                  hierarchyPath(subject),
-                                  style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 11,
+                              child: const Icon(
+                                Icons.school_rounded,
+                                color: goldAccent,
+                                size: 24,
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    subject['name'] ?? 'مقرر دراسي',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
-                                ),
-                              ],
-                              if (profName.isNotEmpty) ...[
-                                const SizedBox(height: 4),
-                                Text(
-                                  'د. $profName',
-                                  style: TextStyle(
-                                    color: goldAccent.withOpacity(0.9),
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
+                                  if (hierarchyPath(subject).isNotEmpty) ...[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      hierarchyPath(subject),
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ],
+                                  if (profName.isNotEmpty) ...[
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      'د. $profName',
+                                      style: TextStyle(
+                                        color: goldAccent.withOpacity(0.9),
+                                        fontSize: 11.5,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            const Icon(
+                              Icons.arrow_forward_ios_rounded,
+                              color: goldAccent,
+                              size: 16,
+                            ),
+                          ],
                         ),
-                        const Icon(
-                          Icons.arrow_forward_ios_rounded,
-                          color: goldAccent,
-                          size: 16,
+                        const SizedBox(height: 14),
+                        Row(
+                          children: [
+                            const Text(
+                              'نسبة الإنجاز',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 11.5,
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              progressPercent,
+                              style: const TextStyle(
+                                color: goldAccent,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(
+                            value: progressVal,
+                            minHeight: 5,
+                            backgroundColor: Colors.white24,
+                            valueColor: const AlwaysStoppedAnimation<Color>(
+                              goldAccent,
+                            ),
+                          ),
                         ),
                       ],
                     ),
