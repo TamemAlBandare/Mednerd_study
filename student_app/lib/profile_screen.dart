@@ -13,6 +13,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _isLoading = true;
+  String? _errorMessage;
   Map<String, dynamic>? _profileData;
   List<Map<String, dynamic>> _subscriptions = [];
 
@@ -22,8 +23,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _fetchProfile();
   }
 
+  String _safeStr(dynamic value, [String fallback = '']) {
+    if (value == null) return fallback;
+    final s = value.toString().trim();
+    return (s.isEmpty || s == 'null') ? fallback : s;
+  }
+
+  Map<String, dynamic>? _safeMap(dynamic value) {
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return null;
+  }
+
+  List<Map<String, dynamic>> _safeMapList(dynamic value) {
+    if (value is List) {
+      return value
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    }
+    return <Map<String, dynamic>>[];
+  }
+
   Future<void> _fetchProfile() async {
-    setState(() => _isLoading = true);
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
     try {
       final user = Supabase.instance.client.auth.currentUser;
       if (user != null) {
@@ -40,14 +67,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
         if (mounted) {
           setState(() {
-            _profileData = profile;
-            _subscriptions = List<Map<String, dynamic>>.from(subs);
+            _profileData = _safeMap(profile);
+            _subscriptions = _safeMapList(subs);
           });
         }
       }
     } catch (e) {
       debugPrint('Error fetching profile: $e');
-      if (mounted) showErrorSnack(context, e);
+      if (mounted) {
+        setState(() => _errorMessage = friendlyError(e));
+        showErrorSnack(context, e);
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -65,28 +95,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
     const goldAccent = Color(0xFFD8B467);
 
     final user = Supabase.instance.client.auth.currentUser;
-    final meta = user?.userMetadata ?? {};
-    final name =
-        _profileData?['full_name'] ??
-        meta['full_name'] ??
-        user?.email?.split('@').first ??
-        'طالب الأكاديمية';
-    final email = user?.email ?? '-';
-    final university =
-        (_profileData?['university_name'] ?? meta['university_name'] ?? '')
-            .toString()
-            .trim();
-    final phone = (_profileData?['phone'] ?? meta['phone'] ?? '')
-        .toString()
-        .trim();
+    final meta = user?.userMetadata ?? <String, dynamic>{};
 
-    final bool isDeviceLinked =
-        _subscriptions.isNotEmpty &&
-        _subscriptions.any(
-          (s) =>
-              s['hardware_fingerprint'] != null &&
-              s['hardware_fingerprint'].toString().trim().isNotEmpty,
-        );
+    final emailPrefix = _safeStr(user?.email).split('@').first.trim();
+    final name = _safeStr(
+      _profileData?['full_name'] ??
+          _profileData?['name'] ??
+          meta['full_name'] ??
+          meta['name'],
+      emailPrefix.isNotEmpty ? emailPrefix : 'طالب الأكاديمية',
+    );
+    final email = _safeStr(user?.email, '-');
+    final university = _safeStr(
+      _profileData?['university_name'] ?? meta['university_name'],
+    );
+    final phone = _safeStr(_profileData?['phone'] ?? meta['phone']);
+
+    final bool isDeviceLinked = _subscriptions.any(
+      (s) => _safeStr(s['hardware_fingerprint']).isNotEmpty,
+    );
 
     return Scaffold(
       backgroundColor: scaffoldBg,
@@ -126,6 +153,60 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: goldAccent))
+          : _errorMessage != null
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: cardBg,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: border.withOpacity(0.7),
+                      width: 1.2,
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.wifi_off_rounded,
+                        color: goldAccent,
+                        size: 44,
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        _errorMessage!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      ElevatedButton.icon(
+                        onPressed: _fetchProfile,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: goldAccent,
+                          foregroundColor: Colors.black87,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        icon: const Icon(Icons.refresh_rounded, size: 18),
+                        label: const Text(
+                          'إعادة المحاولة',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
           : SingleChildScrollView(
               padding: const EdgeInsets.all(20),
               child: Column(
@@ -173,7 +254,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                         const SizedBox(height: 14),
                         Text(
-                          name.toString(),
+                          name,
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 18,

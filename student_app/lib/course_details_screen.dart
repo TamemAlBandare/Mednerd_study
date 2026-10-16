@@ -26,6 +26,7 @@ class CourseDetailsScreen extends StatefulWidget {
 
 class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
   bool _isLoading = true;
+  String? _errorMessage;
   List<Map<String, dynamic>> _lectures = [];
   Map<String, dynamic>? _professor;
 
@@ -49,8 +50,34 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
     _fetchCourseContent();
   }
 
+  String _safeStr(dynamic value, [String fallback = '']) {
+    if (value == null) return fallback;
+    final s = value.toString().trim();
+    return (s.isEmpty || s == 'null') ? fallback : s;
+  }
+
+  Map<String, dynamic>? _safeMap(dynamic value) {
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return null;
+  }
+
+  List<Map<String, dynamic>> _safeMapList(dynamic value) {
+    if (value is List) {
+      return value
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    }
+    return <Map<String, dynamic>>[];
+  }
+
   Future<void> _fetchCourseContent() async {
-    setState(() => _isLoading = true);
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
     try {
       final user = supabase.auth.currentUser;
       if (user == null) {
@@ -59,17 +86,17 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
       }
 
       final fingerprint = await DeviceService.getFingerprint();
-      final pid = widget.professorId?.trim();
-      final gate = Map<String, dynamic>.from(
-        await supabase.rpc(
-          'get_vault_key',
-          params: {
-            'p_subject_id': widget.subjectId,
-            'p_professor_id': (pid == null || pid.isEmpty) ? null : pid,
-            'p_fingerprint': fingerprint,
-          },
-        ) as Map,
+      final pid = _safeStr(widget.professorId);
+      final rawGate = await supabase.rpc(
+        'get_vault_key',
+        params: {
+          'p_subject_id': widget.subjectId,
+          'p_professor_id': pid.isEmpty ? null : pid,
+          'p_fingerprint': fingerprint,
+        },
       );
+
+      final gate = _safeMap(rawGate) ?? <String, dynamic>{};
 
       if (gate['ok'] != true) {
         if (mounted) {
@@ -77,7 +104,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
             SnackBar(
               backgroundColor: const Color(0xFFEF4444),
               behavior: SnackBarBehavior.floating,
-              content: Text(accessDeniedMessage(gate['reason']?.toString())),
+              content: Text(accessDeniedMessage(_safeStr(gate['reason']))),
             ),
           );
           Navigator.pop(context);
@@ -90,27 +117,25 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
           .select('*, professors(id, name, bio, avatar_url)')
           .eq('subject_id', widget.subjectId);
 
-      if (widget.professorId != null && widget.professorId!.trim().isNotEmpty) {
-        query = query.eq('professor_id', widget.professorId!.trim());
+      if (pid.isNotEmpty) {
+        query = query.eq('professor_id', pid);
       }
 
       final response = await query.order('order_index', ascending: true);
-      final lecturesList = List<Map<String, dynamic>>.from(response);
+      final lecturesList = _safeMapList(response);
 
       Map<String, dynamic>? profInfo;
 
-      if (lecturesList.isNotEmpty && lecturesList.first['professors'] != null) {
-        profInfo = Map<String, dynamic>.from(lecturesList.first['professors']);
-      } else if (widget.professorId != null &&
-          widget.professorId!.trim().isNotEmpty) {
+      if (lecturesList.isNotEmpty) {
+        profInfo = _safeMap(lecturesList.first['professors']);
+      }
+      if (profInfo == null && pid.isNotEmpty) {
         final profData = await supabase
             .from('professors')
             .select('id, name, bio, avatar_url')
-            .eq('id', widget.professorId!)
+            .eq('id', pid)
             .maybeSingle();
-        if (profData != null) {
-          profInfo = Map<String, dynamic>.from(profData);
-        }
+        profInfo = _safeMap(profData);
       }
 
       if (mounted) {
@@ -121,7 +146,10 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
       }
     } catch (e) {
       debugPrint('Error fetching lectures: $e');
-      if (mounted) showErrorSnack(context, e);
+      if (mounted) {
+        setState(() => _errorMessage = friendlyError(e));
+        showErrorSnack(context, e);
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -173,6 +201,8 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: goldAccent))
+          : _errorMessage != null
+          ? _buildErrorView(isDark)
           : RefreshIndicator(
               color: goldAccent,
               onRefresh: _fetchCourseContent,
@@ -197,6 +227,58 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
     );
   }
 
+  Widget _buildErrorView(bool isDark) {
+    final cardBg = isDark ? darkCardBg : lightEmeraldDark;
+    final border = isDark ? darkGoldBorder : lightGoldBorder;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: border.withOpacity(0.7), width: 1.2),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.wifi_off_rounded, color: goldAccent, size: 44),
+              const SizedBox(height: 14),
+              Text(
+                _errorMessage ?? 'تعذر تحميل محتوى المقرر',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 18),
+              ElevatedButton.icon(
+                onPressed: _fetchCourseContent,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: goldAccent,
+                  foregroundColor: Colors.black87,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text(
+                  'إعادة المحاولة',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildCourseHeaderCard(bool isDark) {
     final border = isDark ? darkGoldBorder : lightGoldBorder;
     final gradientColors = isDark
@@ -206,14 +288,16 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
 
     String profDisplayText = '';
     if (_professor != null) {
-      final name = (_professor!['name'] ?? '').toString().trim();
-      final bio = (_professor!['bio'] ?? '').toString().trim();
+      final name = _safeStr(_professor!['name']);
+      final bio = _safeStr(_professor!['bio']);
       if (name.isNotEmpty) {
         profDisplayText = bio.isNotEmpty ? '$bio - د. $name' : 'د. $name';
       }
-    } else if (widget.professorName != null &&
-        widget.professorName!.trim().isNotEmpty) {
-      profDisplayText = 'د. ${widget.professorName!.trim()}';
+    } else {
+      final fallbackProf = _safeStr(widget.professorName);
+      if (fallbackProf.isNotEmpty) {
+        profDisplayText = 'د. $fallbackProf';
+      }
     }
 
     return Container(
@@ -409,14 +493,14 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
       separatorBuilder: (_, __) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
         final lecture = _lectures[index];
-        final hasDuration =
-            lecture['duration_minutes'] != null &&
-            lecture['duration_minutes'].toString() != '0';
+        final durationStr = _safeStr(lecture['duration_minutes']);
+        final hasDuration = durationStr.isNotEmpty && durationStr != '0';
         final hasPdf =
-            (lecture['telegram_pdf_id'] != null &&
-                lecture['telegram_pdf_id'].toString().trim().isNotEmpty) ||
-            (lecture['pdf_url'] != null &&
-                lecture['pdf_url'].toString().trim().isNotEmpty);
+            _safeStr(lecture['telegram_pdf_id']).isNotEmpty ||
+            _safeStr(lecture['pdf_url']).isNotEmpty;
+        final title = _safeStr(lecture['title'], 'محاضرة ${index + 1}');
+        final orderNum = _safeStr(lecture['order_index'], '${index + 1}');
+        final lecId = _safeStr(lecture['id']);
 
         return InkWell(
           onTap: () {
@@ -461,7 +545,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                   ),
                   child: Center(
                     child: Text(
-                      '${lecture['order_index'] ?? index + 1}',
+                      orderNum,
                       style: const TextStyle(
                         color: goldAccent,
                         fontSize: 16,
@@ -476,7 +560,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        lecture['title'] ?? 'محاضرة ${index + 1}',
+                        title,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -498,7 +582,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                               ),
                               const SizedBox(width: 4),
                               Text(
-                                '${lecture['duration_minutes']} دقيقة',
+                                '$durationStr دقيقة',
                                 style: TextStyle(
                                   color: Colors.white.withOpacity(0.7),
                                   fontSize: 11,
@@ -541,8 +625,8 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                       context,
                       MaterialPageRoute(
                         builder: (_) => QuizScreen(
-                          title: lecture['title']?.toString() ?? 'المحاضرة',
-                          lectureId: lecture['id']?.toString(),
+                          title: title,
+                          lectureId: lecId.isEmpty ? null : lecId,
                           subjectId: widget.subjectId,
                         ),
                       ),

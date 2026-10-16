@@ -15,6 +15,7 @@ class MyCoursesScreen extends StatefulWidget {
 
 class _MyCoursesScreenState extends State<MyCoursesScreen> {
   bool _isLoading = true;
+  String? _errorMessage;
   List<Map<String, dynamic>> _courses = [];
   final Map<String, double> _courseProgress = {};
 
@@ -24,8 +25,34 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
     _fetchEnrolledCourses();
   }
 
+  String _safeStr(dynamic value, [String fallback = '']) {
+    if (value == null) return fallback;
+    final s = value.toString().trim();
+    return (s.isEmpty || s == 'null') ? fallback : s;
+  }
+
+  Map<String, dynamic> _safeMap(dynamic value) {
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return <String, dynamic>{};
+  }
+
+  List<Map<String, dynamic>> _safeMapList(dynamic value) {
+    if (value is List) {
+      return value
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    }
+    return <Map<String, dynamic>>[];
+  }
+
   Future<void> _fetchEnrolledCourses() async {
-    setState(() => _isLoading = true);
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
     try {
       final user = Supabase.instance.client.auth.currentUser;
       if (user != null) {
@@ -37,17 +64,17 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
             .eq('user_id', user.id)
             .eq('status', 'active');
 
-        final coursesList = List<Map<String, dynamic>>.from(data);
+        final coursesList = _safeMapList(data);
 
         for (final item in coursesList) {
-          final subId = item['subject_id']?.toString();
-          if (subId != null) {
+          final subId = _safeStr(item['subject_id']);
+          if (subId.isNotEmpty) {
             try {
               final lectures = await Supabase.instance.client
                   .from('lectures')
                   .select('id')
                   .eq('subject_id', subId);
-              final totalLecs = (lectures as List).length;
+              final totalLecs = _safeMapList(lectures).length;
               _courseProgress[subId] = totalLecs > 0 ? 0.35 : 0.0;
             } catch (_) {
               _courseProgress[subId] = 0.2;
@@ -63,7 +90,10 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
       }
     } catch (e) {
       debugPrint('Error loading my courses: $e');
-      if (mounted) showErrorSnack(context, e);
+      if (mounted) {
+        setState(() => _errorMessage = friendlyError(e));
+        showErrorSnack(context, e);
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -120,6 +150,60 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: goldAccent))
+          : _errorMessage != null
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: cardBg,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: border.withOpacity(0.7),
+                      width: 1.2,
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.wifi_off_rounded,
+                        color: goldAccent,
+                        size: 44,
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        _errorMessage!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      ElevatedButton.icon(
+                        onPressed: _fetchEnrolledCourses,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: goldAccent,
+                          foregroundColor: Colors.black87,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        icon: const Icon(Icons.refresh_rounded, size: 18),
+                        label: const Text(
+                          'إعادة المحاولة',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
           : _courses.isEmpty
           ? Center(
               child: Padding(
@@ -166,23 +250,30 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
               separatorBuilder: (_, __) => const SizedBox(height: 14),
               itemBuilder: (context, index) {
                 final item = _courses[index];
-                final subject = item['subjects'] ?? {};
-                final prof = item['professors'] ?? {};
-                final profName = (prof['name'] ?? '').toString().trim();
-                final subId = item['subject_id']?.toString() ?? '';
-                final progressVal = _courseProgress[subId] ?? 0.0;
+                final subject = _safeMap(item['subjects']);
+                final prof = _safeMap(item['professors']);
+                final profName = _safeStr(prof['name']);
+                final subId = _safeStr(item['subject_id']);
+                final profId = _safeStr(item['professor_id']);
+                final subName = _safeStr(subject['name'], 'مقرر دراسي');
+                final pathLabel = hierarchyPath(subject);
+                final progressVal = (_courseProgress[subId] ?? 0.0).clamp(
+                  0.0,
+                  1.0,
+                );
                 final progressPercent = '${(progressVal * 100).toInt()}%';
 
                 return InkWell(
                   onTap: () {
+                    if (subId.isEmpty) return;
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (_) => CourseDetailsScreen(
                           subjectId: subId,
-                          subjectTitle: subject['name'] ?? 'مقرر دراسي',
-                          professorId: item['professor_id']?.toString(),
-                          professorName: prof['name']?.toString(),
+                          subjectTitle: subName,
+                          professorId: profId.isEmpty ? null : profId,
+                          professorName: profName.isEmpty ? null : profName,
                         ),
                       ),
                     ).then((_) => _fetchEnrolledCourses());
@@ -232,17 +323,17 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    subject['name'] ?? 'مقرر دراسي',
+                                    subName,
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 15,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
-                                  if (hierarchyPath(subject).isNotEmpty) ...[
+                                  if (pathLabel.isNotEmpty) ...[
                                     const SizedBox(height: 2),
                                     Text(
-                                      hierarchyPath(subject),
+                                      pathLabel,
                                       style: const TextStyle(
                                         color: Colors.white70,
                                         fontSize: 11,

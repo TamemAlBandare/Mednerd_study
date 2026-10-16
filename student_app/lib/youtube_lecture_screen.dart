@@ -48,6 +48,7 @@ class LecturePlayerRouter extends StatefulWidget {
 class _LecturePlayerRouterState extends State<LecturePlayerRouter> {
   bool _checkingAccess = true;
   String? _accessError;
+  bool _isDisposed = false;
 
   @override
   void initState() {
@@ -55,17 +56,30 @@ class _LecturePlayerRouterState extends State<LecturePlayerRouter> {
     _verifyAccess();
   }
 
+  @override
+  void dispose() {
+    _isDisposed = true;
+    super.dispose();
+  }
+
+  String _safeStr(dynamic value, [String fallback = '']) {
+    if (value == null) return fallback;
+    final s = value.toString().trim();
+    return (s.isEmpty || s == 'null') ? fallback : s;
+  }
+
   Future<void> _verifyAccess() async {
+    if (_isDisposed) return;
     setState(() {
       _checkingAccess = true;
       _accessError = null;
     });
 
-    final subjectId = widget.currentLecture['subject_id']?.toString() ?? '';
-    final professorId = widget.currentLecture['professor_id']?.toString();
+    final subjectId = _safeStr(widget.currentLecture['subject_id']);
+    final professorId = _safeStr(widget.currentLecture['professor_id']);
 
     if (subjectId.isEmpty) {
-      if (mounted) {
+      if (!_isDisposed && mounted) {
         setState(() => _checkingAccess = false);
       }
       return;
@@ -73,17 +87,19 @@ class _LecturePlayerRouterState extends State<LecturePlayerRouter> {
 
     final check = await VaultSecurityService.verifyOnlineAccess(
       subjectId: subjectId,
-      professorId: professorId,
+      professorId: professorId.isEmpty ? null : professorId,
     );
 
-    if (!mounted) return;
+    if (_isDisposed || !mounted) return;
     if (check['ok'] == true) {
       setState(() => _checkingAccess = false);
     } else {
       setState(() {
         _checkingAccess = false;
-        _accessError =
-            check['message']?.toString() ?? 'تعذر التحقق من صلاحية الاشتراك.';
+        _accessError = _safeStr(
+          check['message'],
+          'تعذر التحقق من صلاحية الاشتراك.',
+        );
       });
     }
   }
@@ -185,8 +201,7 @@ class _LecturePlayerRouterState extends State<LecturePlayerRouter> {
     }
 
     final isYoutube =
-        youtubeIdFromUrl(widget.currentLecture['video_url']?.toString()) !=
-        null;
+        youtubeIdFromUrl(_safeStr(widget.currentLecture['video_url'])) != null;
     if (isYoutube) {
       return YoutubeLectureScreen(
         currentLecture: widget.currentLecture,
@@ -244,12 +259,19 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
   bool _isBookmarked = false;
   final Random _rand = Random();
   bool _full = false;
+  bool _isDisposed = false;
+
+  String _safeStr(dynamic value, [String fallback = '']) {
+    if (value == null) return fallback;
+    final s = value.toString().trim();
+    return (s.isEmpty || s == 'null') ? fallback : s;
+  }
 
   int _fallbackDurationSeconds() {
     final minsRaw = _active['duration_minutes'];
     final mins = minsRaw is num
         ? minsRaw.toInt()
-        : (int.tryParse('$minsRaw') ?? 0);
+        : (int.tryParse(_safeStr(minsRaw, '0')) ?? 0);
     return mins > 0 ? mins * 60 : 0;
   }
 
@@ -262,8 +284,10 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
     _lastKnownTotal = _fallbackDurationSeconds();
     _resolveWatermark();
     _checkBookmarkStatus();
+
+    final ytId = youtubeIdFromUrl(_safeStr(_active['video_url'])) ?? '';
     _yt = YoutubePlayerController.fromVideoId(
-      videoId: youtubeIdFromUrl(_active['video_url']?.toString()) ?? '',
+      videoId: ytId,
       autoPlay: true,
       startSeconds: widget.startAtSeconds?.toDouble(),
       params: const YoutubePlayerParams(
@@ -273,12 +297,13 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
         origin: 'https://www.youtube-nocookie.com',
       ),
     );
+
     _progressTimer = Timer.periodic(
       const Duration(seconds: 2),
-      (_) => _saveProgress(),
+      (_) => _safeSaveProgress(),
     );
     _wmTimer = Timer.periodic(const Duration(seconds: 7), (_) {
-      if (!mounted) return;
+      if (_isDisposed || !mounted) return;
       setState(() {
         _wmAlign = Alignment(
           (_rand.nextDouble() * 1.6) - 0.8,
@@ -289,26 +314,40 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
     _loadDescription();
   }
 
+  @override
+  void dispose() {
+    _isDisposed = true;
+    _wmTimer?.cancel();
+    _progressTimer?.cancel();
+    _persistProgressValues(_lastKnownPos, _lastKnownTotal);
+    try {
+      _yt.close();
+    } catch (_) {}
+    if (_full) _restoreUi();
+    SecurityService.disableSecureScreen();
+    super.dispose();
+  }
+
   Future<void> _checkBookmarkStatus() async {
-    final lectureId = _active['id']?.toString() ?? '';
+    final lectureId = _safeStr(_active['id']);
     if (lectureId.isNotEmpty) {
       final isFav = await BookmarksService.isFavorite(lectureId);
-      if (mounted) {
+      if (!_isDisposed && mounted) {
         setState(() => _isBookmarked = isFav);
       }
     }
   }
 
   void _resolveWatermark() {
-    final id = widget.studentIdentifier?.trim();
-    if (id != null && id.isNotEmpty) {
+    final id = _safeStr(widget.studentIdentifier);
+    if (id.isNotEmpty) {
       _watermark = id;
       return;
     }
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) return;
-    final name = user.userMetadata?['full_name']?.toString();
-    if (name != null && name.isNotEmpty) {
+    final name = _safeStr(user.userMetadata?['full_name']);
+    if (name.isNotEmpty) {
       _watermark = name;
     } else if (user.email != null) {
       _watermark = user.email!.split('@').first;
@@ -318,18 +357,19 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
   }
 
   Future<void> _loadDescription() async {
-    final id = _active['id']?.toString();
-    if (id == null) return;
+    final id = _safeStr(_active['id']);
+    if (id.isEmpty) return;
     try {
       final row = await Supabase.instance.client
           .from('lectures')
           .select('description')
           .eq('id', id)
           .maybeSingle();
-      if (!mounted || _active['id']?.toString() != id) return;
-      setState(
-        () => _description = (row?['description'] ?? '').toString().trim(),
-      );
+
+      if (_isDisposed || !mounted || _safeStr(_active['id']) != id) return;
+      if (row != null) {
+        setState(() => _description = _safeStr(row['description']).trim());
+      }
     } catch (_) {}
   }
 
@@ -339,6 +379,7 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
   }
 
   void _toggleFull() {
+    if (_isDisposed || !mounted) return;
     setState(() => _full = !_full);
     if (_full) {
       SystemChrome.setPreferredOrientations([
@@ -351,8 +392,8 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
     }
   }
 
-  Future<void> _saveProgress() async {
-    if (_savingProgress) return;
+  Future<void> _safeSaveProgress() async {
+    if (_isDisposed || _savingProgress) return;
     _savingProgress = true;
     try {
       final pos = (await _yt.currentTime).floor();
@@ -384,21 +425,19 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
   }
 
   Future<void> _open(Map<String, dynamic> lecture) async {
-    final subjectId = lecture['subject_id']?.toString() ?? '';
+    final subjectId = _safeStr(lecture['subject_id']);
     if (subjectId.isNotEmpty) {
       final check = await VaultSecurityService.verifyOnlineAccess(
         subjectId: subjectId,
-        professorId: lecture['professor_id']?.toString(),
+        professorId: _safeStr(lecture['professor_id']),
       );
       if (check['ok'] != true) {
-        if (!mounted) return;
+        if (_isDisposed || !mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             backgroundColor: AppColors.error,
             behavior: SnackBarBehavior.floating,
-            content: Text(
-              check['message']?.toString() ?? 'انتهت صلاحية الاشتراك.',
-            ),
+            content: Text(_safeStr(check['message'], 'انتهت صلاحية الاشتراك.')),
           ),
         );
         Navigator.pop(context);
@@ -406,10 +445,10 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
       }
     }
 
-    final id = youtubeIdFromUrl(lecture['video_url']?.toString());
+    final id = youtubeIdFromUrl(_safeStr(lecture['video_url']));
     if (id != null) {
-      await _saveProgress();
-      if (!mounted) return;
+      await _safeSaveProgress();
+      if (_isDisposed || !mounted) return;
       setState(() {
         _active = lecture;
         _description = '';
@@ -420,7 +459,7 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
       _yt.loadVideoById(videoId: id);
       _loadDescription();
     } else {
-      if (!mounted) return;
+      if (_isDisposed || !mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -436,49 +475,44 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
   }
 
   bool get _hasPdf =>
-      (_active['pdf_url']?.toString().trim().isNotEmpty ?? false) ||
-      (_active['telegram_pdf_id']?.toString().trim().isNotEmpty ?? false);
+      _safeStr(_active['pdf_url']).isNotEmpty ||
+      _safeStr(_active['telegram_pdf_id']).isNotEmpty;
 
   void _openQuiz() {
-    _yt.pauseVideo();
+    try {
+      _yt.pauseVideo();
+    } catch (_) {}
+    if (_isDisposed || !mounted) return;
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => QuizScreen(
-          title: _active['title']?.toString() ?? 'اختبار المحاضرة',
-          lectureId: _active['id']?.toString(),
-          subjectId: _active['subject_id']?.toString(),
+          title: _safeStr(_active['title'], 'اختبار المحاضرة'),
+          lectureId: _safeStr(_active['id']),
+          subjectId: _safeStr(_active['subject_id']),
         ),
       ),
     );
   }
 
   void _openPdf() {
-    _yt.pauseVideo();
+    try {
+      _yt.pauseVideo();
+    } catch (_) {}
+    if (_isDisposed || !mounted) return;
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => ProtectedPdfViewerScreen(
-          lectureId: _active['id']?.toString() ?? 'lec_temp',
-          title: _active['title']?.toString() ?? 'ملخص المحاضرة',
-          directPdfUrl: _active['pdf_url']?.toString(),
-          telegramPdfId: _active['telegram_pdf_id']?.toString(),
+          lectureId: _safeStr(_active['id'], 'lec_temp'),
+          title: _safeStr(_active['title'], 'ملخص المحاضرة'),
+          directPdfUrl: _safeStr(_active['pdf_url']),
+          telegramPdfId: _safeStr(_active['telegram_pdf_id']),
           studentName: _watermark,
-          subjectId: _active['subject_id']?.toString(),
+          subjectId: _safeStr(_active['subject_id']),
         ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _wmTimer?.cancel();
-    _progressTimer?.cancel();
-    _persistProgressValues(_lastKnownPos, _lastKnownTotal);
-    _yt.close();
-    if (_full) _restoreUi();
-    SecurityService.disableSecureScreen();
-    super.dispose();
   }
 
   Widget _player() {
@@ -575,7 +609,7 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
             children: [
               Expanded(
                 child: Text(
-                  _active['title']?.toString() ?? 'محاضرة',
+                  _safeStr(_active['title'], 'محاضرة'),
                   style: const TextStyle(
                     fontSize: 16.5,
                     fontWeight: FontWeight.bold,
@@ -595,7 +629,7 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
                     lecture: _active,
                     subjectTitle: widget.subjectTitle,
                   );
-                  if (mounted) {
+                  if (!_isDisposed && mounted) {
                     setState(() => _isBookmarked = added);
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
@@ -681,7 +715,7 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
             itemCount: n,
             itemBuilder: (context, i) {
               final l = widget.allLectures[i];
-              final isActive = l['id'] == _active['id'];
+              final isActive = _safeStr(l['id']) == _safeStr(_active['id']);
               return ListTile(
                 selected: isActive,
                 selectedColor: AppColors.goldAccent,
@@ -689,7 +723,7 @@ class _YoutubeLectureScreenState extends State<YoutubeLectureScreen> {
                   isActive ? Icons.play_circle_fill : Icons.play_circle_outline,
                   color: isActive ? AppColors.goldAccent : null,
                 ),
-                title: Text(l['title']?.toString() ?? 'محاضرة ${i + 1}'),
+                title: Text(_safeStr(l['title'], 'محاضرة ${i + 1}')),
                 subtitle: l['duration_minutes'] != null
                     ? Text('${l['duration_minutes']} دقيقة')
                     : null,

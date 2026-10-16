@@ -28,13 +28,13 @@ class _HomeScreenState extends State<HomeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   int _selectedDrawerIndex = 0;
   bool _isLoading = true;
+  String? _loadError;
 
-  String _studentName = '';
+  String _studentName = 'طالب الأكاديمية';
   Map<String, dynamic>? _lastWatchedLecture;
   List<Map<String, dynamic>> _enrolledCourses = [];
   List<Map<String, dynamic>> _universities = [];
 
-  // منظومة الإشعارات الذكية
   List<Map<String, dynamic>> _notifications = [];
   Set<String> _readNotificationIds = {};
   Set<String> _dismissedNotificationIds = {};
@@ -58,37 +58,61 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadUserData();
   }
 
+  String _safeStr(dynamic value, [String fallback = '']) {
+    if (value == null) return fallback;
+    final s = value.toString().trim();
+    return (s.isEmpty || s == 'null') ? fallback : s;
+  }
+
+  Map<String, dynamic>? _safeMap(dynamic value) {
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return null;
+  }
+
+  List<Map<String, dynamic>> _safeMapList(dynamic value) {
+    if (value is List) {
+      return value
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    }
+    return <Map<String, dynamic>>[];
+  }
+
   String get _readPrefsKey {
-    final uid = supabase.auth.currentUser?.id ?? 'guest';
+    final uid = _safeStr(supabase.auth.currentUser?.id, 'guest');
     return 'read_notifications_$uid';
   }
 
   String get _dismissedPrefsKey {
-    final uid = supabase.auth.currentUser?.id ?? 'guest';
+    final uid = _safeStr(supabase.auth.currentUser?.id, 'guest');
     return 'dismissed_notifications_$uid';
   }
 
   int get _unreadNotificationsCount {
     return _notifications
-        .where((n) => !_readNotificationIds.contains(n['id'].toString()))
+        .where((n) => !_readNotificationIds.contains(_safeStr(n['id'])))
         .length;
   }
 
   Future<void> _loadNotificationStates() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final readList = prefs.getStringList(_readPrefsKey) ?? [];
-      final dismissedList = prefs.getStringList(_dismissedPrefsKey) ?? [];
+      final readList = prefs.getStringList(_readPrefsKey) ?? <String>[];
+      final dismissedList =
+          prefs.getStringList(_dismissedPrefsKey) ?? <String>[];
       _readNotificationIds = readList.toSet();
       _dismissedNotificationIds = dismissedList.toSet();
     } catch (_) {}
   }
 
   Future<void> _markNotificationAsRead(String id) async {
-    if (_readNotificationIds.contains(id)) return;
-    setState(() {
-      _readNotificationIds.add(id);
-    });
+    if (id.isEmpty || _readNotificationIds.contains(id)) return;
+    if (mounted) {
+      setState(() {
+        _readNotificationIds.add(id);
+      });
+    }
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList(_readPrefsKey, _readNotificationIds.toList());
@@ -96,11 +120,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _markAllNotificationsAsRead() async {
-    setState(() {
-      for (final n in _notifications) {
-        _readNotificationIds.add(n['id'].toString());
-      }
-    });
+    if (mounted) {
+      setState(() {
+        for (final n in _notifications) {
+          final id = _safeStr(n['id']);
+          if (id.isNotEmpty) _readNotificationIds.add(id);
+        }
+      });
+    }
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList(_readPrefsKey, _readNotificationIds.toList());
@@ -108,10 +135,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _dismissNotification(String id) async {
-    setState(() {
-      _dismissedNotificationIds.add(id);
-      _notifications.removeWhere((n) => n['id'].toString() == id);
-    });
+    if (id.isEmpty) return;
+    if (mounted) {
+      setState(() {
+        _dismissedNotificationIds.add(id);
+        _notifications.removeWhere((n) => _safeStr(n['id']) == id);
+      });
+    }
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList(
@@ -135,23 +165,25 @@ class _HomeScreenState extends State<HomeScreen> {
           .order('created_at', ascending: false)
           .limit(15);
 
-      for (final raw in (remoteNotifs as List)) {
-        final map = Map<String, dynamic>.from(raw as Map);
-        final id = 'remote_${map['id']}';
+      for (final map in _safeMapList(remoteNotifs)) {
+        final rawId = _safeStr(map['id']);
+        if (rawId.isEmpty) continue;
+        final id = 'remote_$rawId';
         if (_dismissedNotificationIds.contains(id)) continue;
         items.add({
           'id': id,
-          'category': map['category']?.toString() ?? 'admin',
-          'title': map['title']?.toString() ?? 'إشعار إداري',
-          'body': map['body']?.toString() ?? '',
-          'time_label': _formatRelativeTime(map['created_at']?.toString()),
+          'category': _safeStr(map['category'], 'admin'),
+          'title': _safeStr(map['title'], 'إشعار إداري'),
+          'body': _safeStr(map['body']),
+          'time_label': _formatRelativeTime(_safeStr(map['created_at'])),
           'action_type': 'none',
         });
       }
     } catch (_) {}
 
-    if (_lastWatchedLecture != null && _lastLectureMap != null) {
-      final lecId = _lastLectureMap!['id']?.toString() ?? 'last';
+    final lastLec = _lastLectureMap;
+    if (_lastWatchedLecture != null && lastLec != null) {
+      final lecId = _safeStr(lastLec['id'], 'last');
       final notifId = 'resume_$lecId';
       if (!_dismissedNotificationIds.contains(notifId)) {
         items.add({
@@ -169,44 +201,51 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_enrolledCourses.isNotEmpty) {
       try {
         final subjectIds = _enrolledCourses
-            .map((c) => c['id'].toString())
+            .map((c) => _safeStr(c['id']))
+            .where((id) => id.isNotEmpty)
             .toList();
-        final recentLectures = await supabase
-            .from('lectures')
-            .select(
-              'id, title, subject_id, professor_id, video_url, pdf_url, telegram_pdf_id, duration_minutes, order_index',
-            )
-            .inFilter('subject_id', subjectIds)
-            .order('order_index', ascending: false)
-            .limit(8);
 
-        for (final rawLec in (recentLectures as List)) {
-          final lec = Map<String, dynamic>.from(rawLec as Map);
-          final lecId = lec['id'].toString();
-          final notifId = 'lec_new_$lecId';
-          if (_dismissedNotificationIds.contains(notifId)) continue;
+        if (subjectIds.isNotEmpty) {
+          final recentLectures = await supabase
+              .from('lectures')
+              .select(
+                'id, title, subject_id, professor_id, video_url, pdf_url, telegram_pdf_id, duration_minutes, order_index',
+              )
+              .inFilter('subject_id', subjectIds)
+              .order('order_index', ascending: false)
+              .limit(8);
 
-          final courseMatch = _enrolledCourses.firstWhere(
-            (c) => c['id'].toString() == lec['subject_id'].toString(),
-            orElse: () => {'name': 'مقرر دراسي', 'professor_name': ''},
-          );
-          final subjectName = courseMatch['name']?.toString() ?? 'مقرر دراسي';
-          final hasPdf =
-              (lec['pdf_url']?.toString().trim().isNotEmpty ?? false) ||
-              (lec['telegram_pdf_id']?.toString().trim().isNotEmpty ?? false);
+          for (final lec in _safeMapList(recentLectures)) {
+            final lecId = _safeStr(lec['id']);
+            if (lecId.isEmpty) continue;
+            final notifId = 'lec_new_$lecId';
+            if (_dismissedNotificationIds.contains(notifId)) continue;
 
-          items.add({
-            'id': notifId,
-            'category': 'lecture',
-            'title': lec['title']?.toString() ?? 'محاضرة متاحة',
-            'body': hasPdf
-                ? '$subjectName • الفيديو وملخص الـ PDF متاحان للمشاهدة'
-                : '$subjectName • المحاضرة متاحة للمشاهدة والاختبار',
-            'time_label': 'مقرر مفعّل',
-            'action_type': 'open_lecture',
-            'lecture_data': lec,
-            'subject_title': subjectName,
-          });
+            final courseMatch = _enrolledCourses.firstWhere(
+              (c) => _safeStr(c['id']) == _safeStr(lec['subject_id']),
+              orElse: () => <String, dynamic>{
+                'name': 'مقرر دراسي',
+                'professor_name': '',
+              },
+            );
+            final subjectName = _safeStr(courseMatch['name'], 'مقرر دراسي');
+            final hasPdf =
+                _safeStr(lec['pdf_url']).isNotEmpty ||
+                _safeStr(lec['telegram_pdf_id']).isNotEmpty;
+
+            items.add({
+              'id': notifId,
+              'category': 'lecture',
+              'title': _safeStr(lec['title'], 'محاضرة متاحة'),
+              'body': hasPdf
+                  ? '$subjectName • الفيديو وملخص الـ PDF متاحان للمشاهدة'
+                  : '$subjectName • المحاضرة متاحة للمشاهدة والاختبار',
+              'time_label': 'مقرر مفعّل',
+              'action_type': 'open_lecture',
+              'lecture_data': lec,
+              'subject_title': subjectName,
+            });
+          }
         }
       } catch (_) {}
     }
@@ -243,17 +282,21 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadUserData() async {
-    setState(() => _isLoading = true);
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
+
     try {
       try {
         final uniData = await supabase
             .from('universities')
             .select('id, name, logo_url')
             .order('name');
-        _universities = List<Map<String, dynamic>>.from(uniData as List);
+        _universities = _safeMapList(uniData);
       } catch (e) {
         debugPrint('Error loading universities from DB: $e');
-        if (mounted) showErrorSnack(context, e);
         _universities = [];
       }
 
@@ -261,12 +304,9 @@ class _HomeScreenState extends State<HomeScreen> {
       if (user != null) {
         String foundName = '';
 
-        if (user.userMetadata != null) {
-          final meta = user.userMetadata!;
-          final rawName = meta['full_name'] ?? meta['name'];
-          if (rawName != null && rawName.toString().trim().isNotEmpty) {
-            foundName = rawName.toString().trim();
-          }
+        final meta = user.userMetadata;
+        if (meta != null) {
+          foundName = _safeStr(meta['full_name'] ?? meta['name']);
         }
 
         if (foundName.isEmpty || double.tryParse(foundName) != null) {
@@ -277,18 +317,19 @@ class _HomeScreenState extends State<HomeScreen> {
                 .eq('id', user.id)
                 .maybeSingle();
 
-            if (profile != null) {
-              final pName = profile['full_name'] ?? profile['name'];
-              if (pName != null && pName.toString().trim().isNotEmpty) {
-                foundName = pName.toString().trim();
-              }
+            final profileMap = _safeMap(profile);
+            if (profileMap != null) {
+              foundName = _safeStr(
+                profileMap['full_name'] ?? profileMap['name'],
+              );
             }
           } catch (_) {}
         }
 
         if (foundName.isEmpty || double.tryParse(foundName) != null) {
-          if (user.email != null) {
-            foundName = user.email!.split('@').first;
+          final emailPrefix = _safeStr(user.email).split('@').first.trim();
+          if (emailPrefix.isNotEmpty && double.tryParse(emailPrefix) == null) {
+            foundName = emailPrefix;
           }
         }
 
@@ -306,50 +347,53 @@ class _HomeScreenState extends State<HomeScreen> {
             .eq('user_id', user.id)
             .eq('status', 'active');
 
-        _enrolledCourses = (subscriptions as List).map((sub) {
-          final subjectData = sub['subjects'];
-          final profData = sub['professors'];
-          return {
-            'id': sub['subject_id'],
-            'professor_id': sub['professor_id'],
-            'name': subjectData != null
-                ? (subjectData['name'] ?? 'مقرر دراسي')
-                : 'مقرر دراسي',
-            'professor_name': profData != null ? (profData['name'] ?? '') : '',
-          };
-        }).toList();
+        final List<Map<String, dynamic>> parsedCourses = [];
+        for (final sub in _safeMapList(subscriptions)) {
+          final subId = _safeStr(sub['subject_id']);
+          if (subId.isEmpty) continue;
+          final subjectData = _safeMap(sub['subjects']);
+          final profData = _safeMap(sub['professors']);
+          parsedCourses.add({
+            'id': subId,
+            'professor_id': _safeStr(sub['professor_id']),
+            'name': _safeStr(subjectData?['name'], 'مقرر دراسي'),
+            'professor_name': _safeStr(profData?['name']),
+          });
+        }
+        _enrolledCourses = parsedCourses;
 
         final progress = await WatchProgressService.getLastProgress();
-        _lastWatchedLecture = progress;
+        _lastWatchedLecture = _safeMap(progress);
 
         await _buildSmartNotifications();
       }
     } catch (e) {
       debugPrint('Error loading user data: $e');
-      if (mounted) showErrorSnack(context, e);
+      if (mounted) {
+        _loadError = friendlyError(e);
+        showErrorSnack(context, e);
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Map<String, dynamic>? get _lastLectureMap {
-    final raw = _lastWatchedLecture?['lecture'];
-    if (raw is Map) return Map<String, dynamic>.from(raw);
-    return null;
+    return _safeMap(_lastWatchedLecture?['lecture']);
   }
 
   String get _lastLectureTitle {
-    return (_lastLectureMap?['title'] ?? 'محاضرة').toString();
+    return _safeStr(_lastLectureMap?['title'], 'محاضرة');
   }
 
   String get _lastLectureSubjectTitle {
-    return (_lastWatchedLecture?['subject_title'] ?? 'مقرر دراسي').toString();
+    return _safeStr(_lastWatchedLecture?['subject_title'], 'مقرر دراسي');
   }
 
   int get _lastWatchPositionSeconds {
     final raw = _lastWatchedLecture?['position_seconds'];
     if (raw is num) return raw.toInt().clamp(0, 1 << 30);
-    return int.tryParse('$raw') ?? 0;
+    return (int.tryParse(_safeStr(raw, '0')) ?? 0).clamp(0, 1 << 30);
   }
 
   int get _lastWatchDurationSeconds {
@@ -358,14 +402,14 @@ class _HomeScreenState extends State<HomeScreen> {
     if (raw is num) {
       total = raw.toInt().clamp(0, 1 << 30);
     } else {
-      total = int.tryParse('$raw') ?? 0;
+      total = (int.tryParse(_safeStr(raw, '0')) ?? 0).clamp(0, 1 << 30);
     }
 
     if (total <= 0) {
       final minsRaw = _lastLectureMap?['duration_minutes'];
       final mins = minsRaw is num
           ? minsRaw.toInt()
-          : (int.tryParse('$minsRaw') ?? 0);
+          : (int.tryParse(_safeStr(minsRaw, '0')) ?? 0);
       if (mins > 0) {
         total = mins * 60;
       }
@@ -404,20 +448,14 @@ class _HomeScreenState extends State<HomeScreen> {
     final lecture = _lastLectureMap;
     if (progress == null || lecture == null) return;
 
-    final allRaw = progress['allLectures'];
-    final allLectures = allRaw is List
-        ? allRaw
-              .whereType<Map>()
-              .map((e) => Map<String, dynamic>.from(e))
-              .toList()
-        : <Map<String, dynamic>>[lecture];
+    final allLectures = _safeMapList(progress['allLectures']);
     final startAt = _lastWatchPositionSeconds;
 
-    final subjectId = lecture['subject_id']?.toString();
-    if (subjectId != null && subjectId.isNotEmpty) {
+    final subjectId = _safeStr(lecture['subject_id']);
+    if (subjectId.isNotEmpty) {
       final key = await VaultSecurityService.getOrRenewVaultKey(
         subjectId: subjectId,
-        professorId: lecture['professor_id']?.toString(),
+        professorId: _safeStr(lecture['professor_id']),
       );
       if (key == null) {
         if (mounted) {
@@ -451,14 +489,18 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _handleLogout() async {
-    setState(() {
-      _studentName = '';
-      _lastWatchedLecture = null;
-      _enrolledCourses.clear();
-      _notifications.clear();
-      _readNotificationIds.clear();
-    });
-    await supabase.auth.signOut();
+    if (mounted) {
+      setState(() {
+        _studentName = 'طالب الأكاديمية';
+        _lastWatchedLecture = null;
+        _enrolledCourses.clear();
+        _notifications.clear();
+        _readNotificationIds.clear();
+      });
+    }
+    try {
+      await supabase.auth.signOut();
+    } catch (_) {}
     if (mounted) {
       Navigator.pushAndRemoveUntil(
         context,
@@ -482,12 +524,12 @@ class _HomeScreenState extends State<HomeScreen> {
         return StatefulBuilder(
           builder: (sheetContext, setSheetState) {
             final filteredList = _notifications.where((n) {
-              final id = n['id'].toString();
+              final id = _safeStr(n['id']);
               if (activeFilter == 'unread') {
                 return !_readNotificationIds.contains(id);
               }
               if (activeFilter == 'lecture') {
-                return n['category'] == 'lecture';
+                return _safeStr(n['category']) == 'lecture';
               }
               return true;
             }).toList();
@@ -567,7 +609,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           TextButton.icon(
                             onPressed: () async {
                               await _markAllNotificationsAsRead();
-                              setSheetState(() {});
+                              if (sheetContext.mounted) setSheetState(() {});
                             },
                             style: TextButton.styleFrom(
                               foregroundColor: goldAccent,
@@ -668,10 +710,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                 const SizedBox(height: 10),
                             itemBuilder: (context, index) {
                               final item = filteredList[index];
-                              final id = item['id'].toString();
+                              final id = _safeStr(item['id']);
                               final isRead = _readNotificationIds.contains(id);
-                              final category =
-                                  item['category']?.toString() ?? 'admin';
+                              final category = _safeStr(
+                                item['category'],
+                                'admin',
+                              );
 
                               IconData itemIcon = Icons.campaign_rounded;
                               if (category == 'lecture') {
@@ -685,7 +729,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                 direction: DismissDirection.horizontal,
                                 onDismissed: (_) async {
                                   await _dismissNotification(id);
-                                  setSheetState(() {});
+                                  if (sheetContext.mounted) {
+                                    setSheetState(() {});
+                                  }
                                 },
                                 background: Container(
                                   alignment: Alignment.centerRight,
@@ -706,21 +752,24 @@ class _HomeScreenState extends State<HomeScreen> {
                                   borderRadius: BorderRadius.circular(16),
                                   onTap: () async {
                                     await _markNotificationAsRead(id);
-                                    setSheetState(() {});
-                                    final action = item['action_type']
-                                        ?.toString();
+                                    if (sheetContext.mounted) {
+                                      setSheetState(() {});
+                                    }
+                                    final action = _safeStr(
+                                      item['action_type'],
+                                    );
                                     if (action == 'resume_last') {
                                       if (mounted) Navigator.pop(ctx);
                                       _openLastWatched();
-                                    } else if (action == 'open_lecture' &&
-                                        item['lecture_data'] != null) {
-                                      final lec = Map<String, dynamic>.from(
-                                        item['lecture_data'] as Map,
+                                    } else if (action == 'open_lecture') {
+                                      final lec = _safeMap(
+                                        item['lecture_data'],
                                       );
-                                      final subTitle =
-                                          item['subject_title']?.toString() ??
-                                          'مقرر دراسي';
-                                      if (mounted) {
+                                      if (lec != null && mounted) {
+                                        final subTitle = _safeStr(
+                                          item['subject_title'],
+                                          'مقرر دراسي',
+                                        );
                                         Navigator.pop(ctx);
                                         Navigator.push(
                                           context,
@@ -793,9 +842,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                 children: [
                                                   Expanded(
                                                     child: Text(
-                                                      item['title']
-                                                              ?.toString() ??
-                                                          '',
+                                                      _safeStr(item['title']),
                                                       style: TextStyle(
                                                         color: Colors.white,
                                                         fontSize: 13.5,
@@ -820,7 +867,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                               ),
                                               const SizedBox(height: 4),
                                               Text(
-                                                item['body']?.toString() ?? '',
+                                                _safeStr(item['body']),
                                                 style: TextStyle(
                                                   color: Colors.white
                                                       .withOpacity(0.75),
@@ -830,9 +877,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                               ),
                                               const SizedBox(height: 6),
                                               Text(
-                                                item['time_label']
-                                                        ?.toString() ??
-                                                    '',
+                                                _safeStr(item['time_label']),
                                                 style: TextStyle(
                                                   color: goldAccent.withOpacity(
                                                     0.85,
@@ -1236,38 +1281,43 @@ class _HomeScreenState extends State<HomeScreen> {
 
                                               final fingerprint =
                                                   await DeviceService.getFingerprint();
+                                              final rpcRes = await supabase.rpc(
+                                                'activate_code',
+                                                params: {
+                                                  'p_code': enteredCode,
+                                                  'p_fingerprint': fingerprint,
+                                                },
+                                              );
                                               final result =
-                                                  Map<String, dynamic>.from(
-                                                    await supabase.rpc(
-                                                      'activate_code',
-                                                      params: {
-                                                        'p_code': enteredCode,
-                                                        'p_fingerprint':
-                                                            fingerprint,
-                                                      },
-                                                    ) as Map,
-                                                  );
+                                                  _safeMap(rpcRes) ??
+                                                  <String, dynamic>{};
+
                                               if (result['ok'] != true) {
-                                                setDialogState(() {
-                                                  isVerifying = false;
-                                                  errorMessage =
-                                                      activationErrorMessage(
-                                                        result['error']
-                                                            ?.toString(),
-                                                      );
-                                                });
+                                                if (dialogContext.mounted) {
+                                                  setDialogState(() {
+                                                    isVerifying = false;
+                                                    errorMessage =
+                                                        activationErrorMessage(
+                                                          result['error']
+                                                              ?.toString(),
+                                                        );
+                                                  });
+                                                }
                                                 return;
                                               }
                                               final String subjectTitle =
-                                                  (result['subject_name'] ??
-                                                          'المقرر')
-                                                      .toString();
+                                                  _safeStr(
+                                                    result['subject_name'],
+                                                    'المقرر',
+                                                  );
 
-                                              setDialogState(
-                                                () => isVerifying = false,
-                                              );
-                                              if (mounted) {
+                                              if (dialogContext.mounted) {
+                                                setDialogState(
+                                                  () => isVerifying = false,
+                                                );
                                                 Navigator.pop(dialogContext);
+                                              }
+                                              if (mounted) {
                                                 ScaffoldMessenger.of(
                                                   context,
                                                 ).showSnackBar(
@@ -1282,10 +1332,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                                 _loadUserData();
                                               }
                                             } catch (e) {
-                                              setDialogState(() {
-                                                isVerifying = false;
-                                                errorMessage = friendlyError(e);
-                                              });
+                                              if (dialogContext.mounted) {
+                                                setDialogState(() {
+                                                  isVerifying = false;
+                                                  errorMessage = friendlyError(
+                                                    e,
+                                                  );
+                                                });
+                                              }
                                             }
                                           },
                                     style: ElevatedButton.styleFrom(
@@ -1427,9 +1481,14 @@ class _HomeScreenState extends State<HomeScreen> {
         child: _isLoading
             ? const Center(child: CircularProgressIndicator(color: goldAccent))
             : CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
                 slivers: [
                   SliverToBoxAdapter(child: _buildHeader(isDark)),
-                  if (_lastWatchedLecture != null)
+                  if (_loadError != null &&
+                      _enrolledCourses.isEmpty &&
+                      _universities.isEmpty)
+                    SliverToBoxAdapter(child: _buildErrorBanner(isDark)),
+                  if (_lastWatchedLecture != null && _lastLectureMap != null)
                     SliverToBoxAdapter(child: _buildContinueWatching(isDark)),
                   SliverToBoxAdapter(
                     child: _buildEnrolledCoursesSection(isDark),
@@ -1459,6 +1518,54 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildErrorBanner(bool isDark) {
+    final cardBg = isDark ? darkCardBg : lightEmeraldDark;
+    final border = isDark ? darkGoldBorder : lightGoldBorder;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: cardBg,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: border.withOpacity(0.7), width: 1.2),
+        ),
+        child: Column(
+          children: [
+            const Icon(Icons.wifi_off_rounded, color: goldAccent, size: 36),
+            const SizedBox(height: 10),
+            Text(
+              _loadError ?? 'تعذر تحميل البيانات حالياً',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13.5,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: _loadUserData,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: goldAccent,
+                foregroundColor: Colors.black87,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text(
+                'إعادة المحاولة',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildHeader(bool isDark) {
     return Container(
       width: double.infinity,
@@ -1482,7 +1589,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            _studentName.isNotEmpty ? _studentName : 'طالب الأكاديمية',
+            _safeStr(_studentName, 'طالب الأكاديمية'),
             style: const TextStyle(
               color: Colors.white,
               fontSize: 21,
@@ -1495,9 +1602,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildContinueWatching(bool isDark) {
-    if (_lastWatchedLecture == null) return const SizedBox.shrink();
+    if (_lastWatchedLecture == null || _lastLectureMap == null) {
+      return const SizedBox.shrink();
+    }
 
-    final posSec = _lastWatchPositionSeconds;
     final totalSec = _lastWatchDurationSeconds;
     final fraction = _lastWatchProgressFraction;
     final percentText = totalSec > 0 ? '${(fraction * 100).round()}%' : '';
@@ -1735,24 +1843,25 @@ class _HomeScreenState extends State<HomeScreen> {
             itemCount: _enrolledCourses.length,
             itemBuilder: (ctx, idx) {
               final course = _enrolledCourses[idx];
-              final profName = (course['professor_name'] ?? '')
-                  .toString()
-                  .trim();
+              final subId = _safeStr(course['id']);
+              final courseName = _safeStr(course['name'], 'مقرر دراسي');
+              final profName = _safeStr(course['professor_name']);
+              final profId = _safeStr(course['professor_id']);
 
               return Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: InkWell(
                   borderRadius: BorderRadius.circular(18),
                   onTap: () {
+                    if (subId.isEmpty) return;
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (_) => CourseDetailsScreen(
-                          subjectId: course['id'].toString(),
-                          subjectTitle:
-                              course['name']?.toString() ?? 'مقرر دراسي',
-                          professorId: course['professor_id']?.toString(),
-                          professorName: course['professor_name']?.toString(),
+                          subjectId: subId,
+                          subjectTitle: courseName,
+                          professorId: profId.isEmpty ? null : profId,
+                          professorName: profName.isEmpty ? null : profName,
                         ),
                       ),
                     ).then((_) => _loadUserData());
@@ -1801,7 +1910,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  course['name'] ?? '',
+                                  courseName,
                                   style: const TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 15,
@@ -1864,17 +1973,22 @@ class _HomeScreenState extends State<HomeScreen> {
               itemCount: _universities.length,
               itemBuilder: (ctx, idx) {
                 final uni = _universities[idx];
+                final uniId = _safeStr(uni['id']);
+                final uniName = _safeStr(uni['name'], 'جامعة');
+                final logoUrl = _safeStr(uni['logo_url']);
+
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(20),
                     onTap: () {
+                      if (uniId.isEmpty) return;
                       Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (_) => UniversityFacultiesScreen(
-                            universityId: uni['id'].toString(),
-                            universityName: uni['name']?.toString() ?? '',
+                            universityId: uniId,
+                            universityName: uniName,
                           ),
                         ),
                       ).then((_) => _loadUserData());
@@ -1902,9 +2016,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           Expanded(
                             child: Padding(
                               padding: const EdgeInsets.all(14),
-                              child: uni['logo_url'] != null
+                              child: logoUrl.isNotEmpty
                                   ? Image.network(
-                                      uni['logo_url'],
+                                      logoUrl,
                                       errorBuilder: (_, __, ___) => const Icon(
                                         Icons.account_balance_rounded,
                                         size: 38,
@@ -1939,7 +2053,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             ),
                             child: Text(
-                              uni['name'] ?? '',
+                              uniName,
                               textAlign: TextAlign.center,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -2136,7 +2250,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 14),
           Text(
-            _studentName.isNotEmpty ? _studentName : 'طالب الأكاديمية',
+            _safeStr(_studentName, 'طالب الأكاديمية'),
             style: const TextStyle(
               color: Colors.white,
               fontSize: 17,
@@ -2144,7 +2258,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           Text(
-            supabase.auth.currentUser?.email ?? '',
+            _safeStr(supabase.auth.currentUser?.email),
             style: TextStyle(
               color: Colors.white.withOpacity(0.6),
               fontSize: 12.5,
