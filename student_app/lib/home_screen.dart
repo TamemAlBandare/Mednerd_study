@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'main.dart';
 import 'youtube_lecture_screen.dart';
@@ -28,6 +31,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   int _selectedDrawerIndex = 0;
   bool _isLoading = true;
+  bool _isOfflineMode = false;
   String? _loadError;
 
   String _studentName = 'طالب الأكاديمية';
@@ -38,6 +42,9 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Map<String, dynamic>> _notifications = [];
   Set<String> _readNotificationIds = {};
   Set<String> _dismissedNotificationIds = {};
+
+  RealtimeChannel? _securityRealtimeChannel;
+  bool _isRevocationDialogShowing = false;
 
   static const Color lightScaffoldBg = Color(0xFFF3EFE6);
   static const Color lightEmeraldDark = Color(0xFF0E332E);
@@ -56,6 +63,258 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadUserData();
+    _initRealtimeBanListener();
+  }
+
+  @override
+  void dispose() {
+    if (_securityRealtimeChannel != null) {
+      supabase.removeChannel(_securityRealtimeChannel!);
+      _securityRealtimeChannel = null;
+    }
+    super.dispose();
+  }
+
+  String get _cacheUniversitiesKey {
+    final uid = _safeStr(supabase.auth.currentUser?.id, 'guest');
+    return 'cache_universities_$uid';
+  }
+
+  String get _cacheCoursesKey {
+    final uid = _safeStr(supabase.auth.currentUser?.id, 'guest');
+    return 'cache_courses_$uid';
+  }
+
+  Future<void> _saveDataToLocalCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_cacheUniversitiesKey, jsonEncode(_universities));
+      await prefs.setString(_cacheCoursesKey, jsonEncode(_enrolledCourses));
+    } catch (_) {}
+  }
+
+  Future<bool> _loadDataFromLocalCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final uniRaw = prefs.getString(_cacheUniversitiesKey);
+      final coursesRaw = prefs.getString(_cacheCoursesKey);
+
+      bool loadedAny = false;
+      if (uniRaw != null) {
+        final decodedUni = jsonDecode(uniRaw);
+        if (decodedUni is List) {
+          _universities = decodedUni
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList();
+          loadedAny = true;
+        }
+      }
+
+      if (coursesRaw != null) {
+        final decodedCourses = jsonDecode(coursesRaw);
+        if (decodedCourses is List) {
+          _enrolledCourses = decodedCourses
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList();
+          loadedAny = true;
+        }
+      }
+      return loadedAny;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  void _initRealtimeBanListener() {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    _securityRealtimeChannel = supabase
+        .channel('security_guard_${user.id}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'student_subscriptions',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: user.id,
+          ),
+          callback: (payload) async {
+            if (!mounted) return;
+
+            if (payload.eventType == PostgresChangeEvent.delete) {
+              final oldRec = payload.oldRecord;
+              final subId = _safeStr(oldRec['subject_id']);
+              if (subId.isNotEmpty) {
+                await VaultSecurityService.revokeAndWipeSubject(subId);
+              }
+              _handleCourseRevokedLocally(
+                'تم إلغاء اشتراكك في أحد المقررات من قبل الإدارة.',
+              );
+              return;
+            }
+
+            final newRec = payload.newRecord;
+            if (newRec.isNotEmpty) {
+              final status = _safeStr(newRec['status'], 'active');
+              final subId = _safeStr(newRec['subject_id']);
+
+              if (status != 'active') {
+                if (subId.isNotEmpty) {
+                  await VaultSecurityService.revokeAndWipeSubject(subId);
+                }
+                if (status == 'banned' || status == 'suspended') {
+                  _forceLogoutDueToRevocation(
+                    'تم إيقاف حسابك أو حظر وصولك للمنصة من قبل الإدارة.',
+                  );
+                } else {
+                  _handleCourseRevokedLocally(
+                    'تم إيقاف صلاحية الوصول لأحد المقررات الدراسية.',
+                  );
+                }
+              }
+            }
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'profiles',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: user.id,
+          ),
+          callback: (payload) {
+            if (!mounted) return;
+            final newRec = payload.newRecord;
+            final isBanned =
+                newRec['is_banned'] == true ||
+                _safeStr(newRec['status']) == 'banned' ||
+                _safeStr(newRec['status']) == 'suspended';
+
+            if (isBanned) {
+              _forceLogoutDueToRevocation(
+                'تم حظر حسابك من قبل إدارة أكاديمية MEDNERD.',
+              );
+            }
+          },
+        )
+        .subscribe();
+  }
+
+  void _handleCourseRevokedLocally(String message) {
+    if (!mounted) return;
+    _loadUserData();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: const Color(0xFFEF4444),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 5),
+        content: Row(
+          children: [
+            const Icon(Icons.gpp_bad_rounded, color: Colors.white, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _forceLogoutDueToRevocation(String reason) async {
+    if (!mounted || _isRevocationDialogShowing) return;
+    _isRevocationDialogShowing = true;
+
+    try {
+      for (final course in _enrolledCourses) {
+        final subId = _safeStr(course['id']);
+        if (subId.isNotEmpty) {
+          await VaultSecurityService.revokeAndWipeSubject(subId);
+        }
+      }
+      await supabase.auth.signOut();
+    } catch (_) {}
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          backgroundColor: const Color(0xFF151E2E),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: const BorderSide(color: Color(0xFFC5A059), width: 1.4),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.gpp_bad_rounded, color: Color(0xFFEF4444), size: 26),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'تنبيه أمني وإداري',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            reason,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.88),
+              fontSize: 13.5,
+              height: 1.45,
+            ),
+          ),
+          actions: [
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AuthScreen()),
+                    (route) => false,
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: goldAccent,
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text(
+                  'تسجيل الخروج',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   String _safeStr(dynamic value, [String fallback = '']) {
@@ -297,7 +556,6 @@ class _HomeScreenState extends State<HomeScreen> {
         _universities = _safeMapList(uniData);
       } catch (e) {
         debugPrint('Error loading universities from DB: $e');
-        _universities = [];
       }
 
       final user = supabase.auth.currentUser;
@@ -319,6 +577,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
             final profileMap = _safeMap(profile);
             if (profileMap != null) {
+              if (profileMap['is_banned'] == true ||
+                  _safeStr(profileMap['status']) == 'banned') {
+                _forceLogoutDueToRevocation(
+                  'تم إيقاف حسابك من قبل إدارة المنصة.',
+                );
+                return;
+              }
               foundName = _safeStr(
                 profileMap['full_name'] ?? profileMap['name'],
               );
@@ -339,39 +604,51 @@ class _HomeScreenState extends State<HomeScreen> {
 
         _studentName = foundName;
 
-        final subscriptions = await supabase
-            .from('student_subscriptions')
-            .select(
-              'subject_id, professor_id, subjects(id, name), professors(id, name)',
-            )
-            .eq('user_id', user.id)
-            .eq('status', 'active');
+        try {
+          final subscriptions = await supabase
+              .from('student_subscriptions')
+              .select(
+                'subject_id, professor_id, subjects(id, name), professors(id, name)',
+              )
+              .eq('user_id', user.id)
+              .eq('status', 'active');
 
-        final List<Map<String, dynamic>> parsedCourses = [];
-        for (final sub in _safeMapList(subscriptions)) {
-          final subId = _safeStr(sub['subject_id']);
-          if (subId.isEmpty) continue;
-          final subjectData = _safeMap(sub['subjects']);
-          final profData = _safeMap(sub['professors']);
-          parsedCourses.add({
-            'id': subId,
-            'professor_id': _safeStr(sub['professor_id']),
-            'name': _safeStr(subjectData?['name'], 'مقرر دراسي'),
-            'professor_name': _safeStr(profData?['name']),
-          });
-        }
-        _enrolledCourses = parsedCourses;
+          final List<Map<String, dynamic>> parsedCourses = [];
+          for (final sub in _safeMapList(subscriptions)) {
+            final subId = _safeStr(sub['subject_id']);
+            if (subId.isEmpty) continue;
+            final subjectData = _safeMap(sub['subjects']);
+            final profData = _safeMap(sub['professors']);
+            parsedCourses.add({
+              'id': subId,
+              'professor_id': _safeStr(sub['professor_id']),
+              'name': _safeStr(subjectData?['name'], 'مقرر دراسي'),
+              'professor_name': _safeStr(profData?['name']),
+            });
+          }
+          _enrolledCourses = parsedCourses;
+        } catch (_) {}
 
         final progress = await WatchProgressService.getLastProgress();
         _lastWatchedLecture = _safeMap(progress);
 
         await _buildSmartNotifications();
       }
+
+      // تم جلب البيانات بنجاح، نقوم بحفظها في الكاش المحلي للأوفلاين
+      _isOfflineMode = false;
+      await _saveDataToLocalCache();
     } catch (e) {
-      debugPrint('Error loading user data: $e');
-      if (mounted) {
+      debugPrint('Network error, attempting offline cache: $e');
+      // فشل الاتصال بالشبكة، نحاول الاسترجاع من الكاش المحلي
+      final hasCachedData = await _loadDataFromLocalCache();
+      if (hasCachedData) {
+        _isOfflineMode = true;
+      } else {
         _loadError = friendlyError(e);
-        showErrorSnack(context, e);
+        if (_enrolledCourses.isEmpty && _universities.isEmpty) {
+          if (mounted) showErrorSnack(context, e);
+        }
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -489,6 +766,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _handleLogout() async {
+    if (_securityRealtimeChannel != null) {
+      supabase.removeChannel(_securityRealtimeChannel!);
+      _securityRealtimeChannel = null;
+    }
     if (mounted) {
       setState(() {
         _studentName = 'طالب الأكاديمية';
@@ -1483,6 +1764,8 @@ class _HomeScreenState extends State<HomeScreen> {
             : CustomScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 slivers: [
+                  if (_isOfflineMode)
+                    SliverToBoxAdapter(child: _buildOfflineBanner(isDark)),
                   SliverToBoxAdapter(child: _buildHeader(isDark)),
                   if (_loadError != null &&
                       _enrolledCourses.isEmpty &&
@@ -1514,6 +1797,29 @@ class _HomeScreenState extends State<HomeScreen> {
             fontSize: 13,
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildOfflineBanner(bool isDark) {
+    return Container(
+      width: double.infinity,
+      color: const Color(0xFFD97706),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      child: const Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.cloud_off_rounded, color: Colors.white, size: 18),
+          SizedBox(width: 8),
+          Text(
+            'أنت تعمل حالياً في وضع عدم الاتصال (عرض البيانات المخزنة محلياً)',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
       ),
     );
   }
