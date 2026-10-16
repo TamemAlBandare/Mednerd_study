@@ -6,7 +6,6 @@
   <title>لوحة الإدارة المركزية | MedNerd Academy</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   
@@ -293,6 +292,10 @@
         <i class="fa-solid fa-shield-halved"></i>
         <span>أجهزة الطلاب وبصمات العتاد</span>
       </li>
+      <li class="nav-item" onclick="switchTab('notifications')">
+        <i class="fa-solid fa-bell"></i>
+        <span>إشعارات وتنبيهات الطلاب</span>
+      </li>
     </ul>
   </aside>
 
@@ -514,7 +517,7 @@
                   <th>الكلية</th>
                   <th>المادة</th>
                   <th>وصف الدكتور</th>
-                  <th class="text-center w-24">إجراء</th>
+                  <th class="text-center w-44">إجراء</th>
                 </tr>
               </thead>
               <tbody id="professors-table"><tr><td colspan="6" class="text-center text-slate-400">جاري التحميل...</td></tr></tbody>
@@ -589,7 +592,13 @@
               <input type="number" id="lec-order" value="1" min="1" class="form-control font-mono">
             </div>
           </div>
-          <button onclick="addLecture()" class="mt-5 w-full py-3 bg-emerald-600 hover:bg-emerald-500 font-bold rounded-xl transition shadow-lg text-white">
+
+          <div class="mt-4 flex items-center gap-2 text-xs text-amber-300">
+            <input type="checkbox" id="lec-auto-notify" checked class="w-4 h-4 accent-amber-500">
+            <label for="lec-auto-notify">إرسال إشعار فوري تلقائي لطلاب هذا المقرر عند نشر المحاضرة 🔔</label>
+          </div>
+
+          <button id="btn-add-lecture" onclick="addLecture()" class="mt-4 w-full py-3 bg-emerald-600 hover:bg-emerald-500 font-bold rounded-xl transition shadow-lg text-white">
             <i class="fa-solid fa-cloud-arrow-up ml-1"></i> حفظ ونشر المحاضرة
           </button>
         </div>
@@ -611,7 +620,7 @@
                   <th>المادة والدكتور</th>
                   <th>المدة</th>
                   <th>الملخص (PDF)</th>
-                  <th class="text-center w-24">إجراء</th>
+                  <th class="text-center w-48">إجراء</th>
                 </tr>
               </thead>
               <tbody id="lectures-table-body">
@@ -786,11 +795,11 @@
         </div>
       </section>
 
-      <!-- 8. إدارة بصمات العتاد والاشتراكات (مع إضافة عمود الجامعة والكلية) -->
+      <!-- 8. إدارة بصمات العتاد والاشتراكات -->
       <section id="pane-subscriptions" class="tab-pane">
         <div class="card">
           <div class="flex justify-between items-center mb-4">
-            <div class="card-title mb-0">إدارة أجهزة واشتراكات الطلاب</div>
+            <div class="card-title mb-0">إدارة أجهزة واشتراكات الطلاب (مربوطة بالطرد الفوري Realtime)</div>
             <button onclick="loadSubscriptions()" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-xs rounded-lg transition">تحديث 🔄</button>
           </div>
           <div class="overflow-x-auto">
@@ -803,12 +812,96 @@
                   <th>الدكتور</th>
                   <th>بصمة العتاد (Hardware)</th>
                   <th>الحالة</th>
-                  <th class="text-center">التحكم</th>
+                  <th class="text-center">التحكم بالاشتراك</th>
                   <th class="text-center">فك الارتباط</th>
                   <th class="text-center w-20">حذف</th>
                 </tr>
               </thead>
               <tbody id="subs-table-body"><tr><td colspan="9" class="text-center text-slate-400">جاري التحميل...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 9. قسم نشر وإدارة إشعارات الطلاب (متوافق مع تطبيق الفلاتر) -->
+      <section id="pane-notifications" class="tab-pane">
+        <div class="card">
+          <div class="card-title flex items-center justify-between">
+            <span><i class="fa-solid fa-paper-plane ml-1"></i> إرسال إشعار جديد للطلاب في التطبيق</span>
+            <span class="text-xs font-normal text-slate-400">يظهر في مركز الإشعارات داخل HomeScreen</span>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm mb-4">
+            <div>
+              <label class="block text-slate-400 mb-1">الفئة المستهدفة <span class="text-rose-400">*</span></label>
+              <select id="notif-target-type" class="form-control" onchange="onNotifTargetChange(this.value)">
+                <option value="all">📢 عام — جميع طلاب الأكاديمية</option>
+                <option value="subject">📚 طلاب مقرر دراسي محدد</option>
+                <option value="user">👤 طالب محدد بعينه</option>
+              </select>
+            </div>
+
+            <div id="notif-subject-box" class="hidden">
+              <label class="block text-slate-400 mb-1">اختر المقرر المستهدف <span class="text-rose-400">*</span></label>
+              <select id="notif-subject-select" class="form-control">
+                <option value="">اختر المقرر...</option>
+              </select>
+            </div>
+
+            <div id="notif-user-box" class="hidden">
+              <label class="block text-slate-400 mb-1">اختر الطالب المستهدف <span class="text-rose-400">*</span></label>
+              <select id="notif-user-select" class="form-control">
+                <option value="">اختر الطالب...</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-slate-400 mb-1">تصنيف الإشعار (أيقونة التطبيق)</label>
+              <select id="notif-category" class="form-control">
+                <option value="admin">📢 إشعار إداري / هام (admin)</option>
+                <option value="lecture">🎬 تنبيه محاضرات ومحتوى (lecture)</option>
+                <option value="security">🛡️ تنبيه أمني وحماية (security)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 gap-4 text-sm">
+            <div>
+              <label class="block text-slate-400 mb-1">عنوان الإشعار <span class="text-rose-400">*</span></label>
+              <input type="text" id="notif-title" class="form-control" placeholder="مثال: هام لطلاب السنة التحضيرية بخصوص محاضرات التشريح">
+            </div>
+            <div>
+              <label class="block text-slate-400 mb-1">نص الإشعار والتفاصيل <span class="text-rose-400">*</span></label>
+              <textarea id="notif-body" rows="3" class="form-control" placeholder="اكتب محتوى التنبيه الذي سيظهر للطالب في مركز الإشعارات..."></textarea>
+            </div>
+          </div>
+
+          <button id="btn-send-notif" onclick="sendNotification()" class="mt-5 w-full py-3 btn-gold rounded-xl transition shadow-lg">
+            <i class="fa-solid fa-bell ml-1"></i> نشر وإرسال الإشعار الآن
+          </button>
+        </div>
+
+        <div class="card">
+          <div class="flex justify-between items-center mb-4">
+            <div class="card-title mb-0">سجل الإشعارات المرسلة</div>
+            <div class="flex gap-2">
+              <button onclick="loadNotificationsList()" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-xs rounded-lg transition">تحديث 🔄</button>
+            </div>
+          </div>
+          <div class="overflow-x-auto">
+            <table>
+              <thead>
+                <tr>
+                  <th>التصنيف</th>
+                  <th>العنوان والمحتوى</th>
+                  <th>المستلم</th>
+                  <th>تاريخ النشر</th>
+                  <th class="text-center w-24">إجراء</th>
+                </tr>
+              </thead>
+              <tbody id="notifications-table-body">
+                <tr><td colspan="5" class="text-center text-slate-400">جاري تحميل الإشعارات...</td></tr>
+              </tbody>
             </table>
           </div>
         </div>
@@ -824,17 +917,34 @@
     const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd1YmFvcmtqanFpY2xybmFoamR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwMTcyMTAsImV4cCI6MjEwNTU5MzIxMH0.mUwrnY4YlQN0pMwZjFC0cObDeh6htvobhlkLg8UmMTU";
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // صلاحية الأدمن تُفحص من جدول admin_users في قاعدة البيانات
-
+    // تهريب كامل للنصوص لمنع XSS في HTML و Attributes
     function escapeHtml(text) {
       if (text == null) return '';
-      const div = document.createElement('div');
-      div.appendChild(document.createTextNode(String(text)));
-      return div.innerHTML;
+      return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     }
 
+    // تهريب آمن للمعاملات النصية داخل onclick="..."
+    function escapeJsArg(text) {
+      if (text == null) return '';
+      return String(text)
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/"/g, '&quot;')
+        .replace(/\r?\n/g, ' ');
+    }
 
-    // رسالة خطأ مفهومة (23503 = العنصر مرتبط بسجلات أخرى)
+    // التحقق من أن الرابط يبدأ بـ http أو https فقط لمنع javascript: XSS
+    function safeHttpUrl(url) {
+      if (!url) return '';
+      const trimmed = String(url).trim();
+      return /^https?:\/\//i.test(trimmed) ? escapeHtml(trimmed) : '';
+    }
+
     function friendlyError(error) {
       if (!error) return '';
       if (error.code === '23503') {
@@ -842,10 +952,10 @@
       }
       if (error.code === '23505') return 'هذا السجل موجود مسبقاً (قيمة مكررة).';
       if (error.code === '42501') return 'ليست لديك صلاحية لهذه العملية (تأكد أن حسابك مسجل في جدول admin_users).';
+      if (error.code === '42P01') return 'الجدول غير موجود في قاعدة البيانات بعد (يرجى تشغيل كود SQL الخاص بجدول الإشعارات في Supabase).';
       return 'حدث خطأ: ' + (error.message || error);
     }
 
-    // سجل عمليات الأدمن (محاولة على أفضل جهد، لا يوقف العملية عند الفشل)
     async function logAction(action, target_table, target_id, details) {
       try {
         const { data: { user } } = await supabase.auth.getUser();
@@ -923,7 +1033,8 @@
         lectures: 'المحاضرات والشروحات',
         quizzes: 'الاختبارات والأسئلة',
         codes: 'توليد وإدارة الأكواد',
-        subscriptions: 'أجهزة الطلاب وبصمات العتاد'
+        subscriptions: 'أجهزة الطلاب وبصمات العتاد',
+        notifications: 'إشعارات وتنبيهات الطلاب'
       };
       document.getElementById('page-title').innerText = titles[tabId] || 'لوحة الإدارة';
 
@@ -935,6 +1046,7 @@
       if (tabId === 'quizzes') { window.loadUniDropdowns(); }
       if (tabId === 'codes') { window.loadUniDropdowns(); window.loadCodes(); }
       if (tabId === 'subscriptions') window.loadSubscriptions();
+      if (tabId === 'notifications') { window.prepareNotificationsTab(); window.loadNotificationsList(); }
     };
 
     window.loadDashboardStats = async function() {
@@ -981,10 +1093,10 @@
       tbody.innerHTML = data.map(u => `
         <tr>
           <td><b>${escapeHtml(u.name)}</b></td>
-          <td class="font-mono text-xs text-slate-400">${u.id}</td>
+          <td class="font-mono text-xs text-slate-400">${escapeHtml(u.id)}</td>
           <td class="text-center">
-            <button onclick="editUniversity('${u.id}')" class="text-xs px-2.5 py-1 bg-slate-700 hover:bg-slate-600 rounded ml-1">تعديل ✏️</button>
-                <button onclick="deleteUniversity('${u.id}', '${escapeHtml(u.name)}')" class="btn-delete">حذف 🗑</button>
+            <button onclick="editUniversity('${escapeJsArg(u.id)}')" class="text-xs px-2.5 py-1 bg-slate-700 hover:bg-slate-600 rounded ml-1">تعديل ✏️</button>
+            <button onclick="deleteUniversity('${escapeJsArg(u.id)}', '${escapeJsArg(u.name)}')" class="btn-delete">حذف 🗑</button>
           </td>
         </tr>
       `).join('');
@@ -1005,7 +1117,7 @@
     window.loadUniDropdowns = async function() {
       const { data } = await supabase.from('universities').select('id, name').order('name');
       if (!data) return;
-      const opts = '<option value="">اختر الجامعة...</option>' + data.map(u => `<option value="${u.id}">${escapeHtml(u.name)}</option>`).join('');
+      const opts = '<option value="">اختر الجامعة...</option>' + data.map(u => `<option value="${escapeHtml(u.id)}">${escapeHtml(u.name)}</option>`).join('');
       
       ['faculty-uni-select', 'subj-uni-select', 'prof-uni-select', 'gen-uni-select', 'lec-uni-select', 'quiz-uni-select'].forEach(id => {
         const el = document.getElementById(id);
@@ -1038,8 +1150,8 @@
           <td><b>${escapeHtml(f.name)}</b></td>
           <td>${escapeHtml(f.universities?.name || '-')}</td>
           <td class="text-center">
-            <button onclick="editFaculty('${f.id}')" class="text-xs px-2.5 py-1 bg-slate-700 hover:bg-slate-600 rounded ml-1">تعديل ✏️</button>
-                <button onclick="deleteFaculty('${f.id}', '${escapeHtml(f.name)}')" class="btn-delete">حذف 🗑️</button>
+            <button onclick="editFaculty('${escapeJsArg(f.id)}')" class="text-xs px-2.5 py-1 bg-slate-700 hover:bg-slate-600 rounded ml-1">تعديل ✏️</button>
+            <button onclick="deleteFaculty('${escapeJsArg(f.id)}', '${escapeJsArg(f.name)}')" class="btn-delete">حذف 🗑️</button>
           </td>
         </tr>
       `).join('');
@@ -1060,7 +1172,7 @@
       if (!sel) return;
       if (!uniId) { sel.innerHTML = '<option value="">اختر الكلية...</option>'; return; }
       const { data } = await supabase.from('faculties').select('id, name').eq('university_id', uniId).order('name');
-      sel.innerHTML = '<option value="">اختر الكلية...</option>' + (data || []).map(f => `<option value="${f.id}">${escapeHtml(f.name)}</option>`).join('');
+      sel.innerHTML = '<option value="">اختر الكلية...</option>' + (data || []).map(f => `<option value="${escapeHtml(f.id)}">${escapeHtml(f.name)}</option>`).join('');
     };
 
     window.loadSubjectsForFaculty = async function(facultyId, targetSubjectSelectId = 'prof-subj-select') {
@@ -1068,7 +1180,7 @@
       if (!sel) return;
       if (!facultyId) { sel.innerHTML = '<option value="">اختر المقرر...</option>'; return; }
       const { data } = await supabase.from('subjects').select('id, name, code_prefix').eq('faculty_id', facultyId).order('name');
-      sel.innerHTML = '<option value="">اختر المقرر...</option>' + (data || []).map(s => `<option value="${s.id}" data-prefix="${s.code_prefix || 'MED'}">${escapeHtml(s.name)}</option>`).join('');
+      sel.innerHTML = '<option value="">اختر المقرر...</option>' + (data || []).map(s => `<option value="${escapeHtml(s.id)}" data-prefix="${escapeHtml(s.code_prefix || 'MED')}">${escapeHtml(s.name)}</option>`).join('');
     };
 
     window.saveSubject = async function() {
@@ -1088,7 +1200,6 @@
       }
     };
 
-    // جلب الكورسات بشكل متين وتفادي أخطاء PostgREST
     window.loadSubjects = async function() {
       const tbody = document.getElementById('subjects-table');
       if (!tbody) return;
@@ -1102,7 +1213,6 @@
         ]);
 
         if (subRes.error) {
-          console.error('خطأ في جلب المقررات:', subRes.error);
           tbody.innerHTML = `<tr><td colspan="5" class="text-center text-rose-400">خطأ: ${escapeHtml(subRes.error.message)}</td></tr>`;
           return;
         }
@@ -1127,14 +1237,13 @@
               <td class="text-slate-300 font-semibold">${escapeHtml(uniName)}</td>
               <td class="text-sky-300">${escapeHtml(facName)}</td>
               <td class="text-center">
-                <button onclick="editSubject('${s.id}')" class="text-xs px-2.5 py-1 bg-slate-700 hover:bg-slate-600 rounded ml-1">تعديل ✏️</button>
-                <button onclick="deleteSubject('${s.id}', '${escapeHtml(s.name)}')" class="btn-delete">حذف 🗑️</button>
+                <button onclick="editSubject('${escapeJsArg(s.id)}')" class="text-xs px-2.5 py-1 bg-slate-700 hover:bg-slate-600 rounded ml-1">تعديل ✏️</button>
+                <button onclick="deleteSubject('${escapeJsArg(s.id)}', '${escapeJsArg(s.name)}')" class="btn-delete">حذف 🗑️</button>
               </td>
             </tr>
           `;
         }).join('');
       } catch (err) {
-        console.error('استثناء عام في loadSubjects:', err);
         tbody.innerHTML = `<tr><td colspan="5" class="text-center text-rose-400">حدث خطأ غير متوقع: ${escapeHtml(err.message)}</td></tr>`;
       }
     };
@@ -1247,21 +1356,30 @@
               <td class="text-sky-300">${escapeHtml(facName)}</td>
               <td class="text-amber-300 font-bold">${escapeHtml(subjName)}</td>
               <td class="text-slate-400 text-xs max-w-xs truncate" title="${escapeHtml(profBio)}">${escapeHtml(profBio)}</td>
-              <td class="text-center">
-                <button onclick="editProfessor('${sp.professor_id}')" class="text-xs px-2.5 py-1 bg-slate-700 hover:bg-slate-600 rounded ml-1">تعديل ✏️</button>
-                <button onclick="deleteProfessor('${sp.professor_id}', '${escapeHtml(profObj.name || '')}')" class="btn-delete">حذف 🗑️</button>
+              <td class="text-center whitespace-nowrap">
+                <button onclick="editProfessor('${escapeJsArg(sp.professor_id)}')" class="text-xs px-2 py-1 bg-slate-700 hover:bg-slate-600 rounded ml-1">تعديل ✏️</button>
+                <button onclick="unlinkProfessorSubject('${escapeJsArg(sp.id)}', '${escapeJsArg(profObj.name || '')}', '${escapeJsArg(subjName)}')" class="text-xs px-2 py-1 bg-amber-600/30 text-amber-300 hover:bg-amber-600/50 rounded ml-1" title="فك ربط الدكتور من هذه المادة فقط">فك ربط 🔗</button>
+                <button onclick="deleteProfessor('${escapeJsArg(sp.professor_id)}', '${escapeJsArg(profObj.name || '')}')" class="btn-delete">حذف كلي 🗑️</button>
               </td>
             </tr>
           `;
         }).join('');
       } catch (err) {
-        console.error('خطأ في loadProfessorsList:', err);
         tbody.innerHTML = `<tr><td colspan="6" class="text-center text-rose-400">حدث خطأ: ${escapeHtml(err.message)}</td></tr>`;
       }
     };
 
+    window.unlinkProfessorSubject = async function(spId, profName, subjName) {
+      if (!confirm(`هل تريد فك ارتباط الدكتور "${profName}" من مقرر "${subjName}" فقط؟`)) return;
+      const { error } = await supabase.from('subject_professors').delete().eq('id', spId);
+      if (error) alert(friendlyError(error));
+      else {
+        window.loadProfessorsList();
+      }
+    };
+
     window.deleteProfessor = async function(profId, name) {
-      if (!confirm(`هل تريد حذف الدكتور "${name}"؟ سيتم حذف محاضراته وأكواده وارتباطه بالمقررات. (لن يتم الحذف إذا كان له طلاب مشتركون)`)) return;
+      if (!confirm(`هل تريد حذف الدكتور "${name}" نهائياً من النظام؟ سيتم حذف محاضراته وأكواده وارتباطه بالمقررات.`)) return;
       const { error } = await supabase.from('professors').delete().eq('id', profId);
       if (error) alert(friendlyError(error));
       else {
@@ -1300,7 +1418,7 @@
         profSelect.innerHTML = '<option value="">لا يوجد دكاترة مرتبطون بهذه المادة</option>';
         return;
       }
-      profSelect.innerHTML = '<option value="">-- اختر الدكتور --</option>' + profs.map(p => `<option value="${p.id}" data-name="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`).join('');
+      profSelect.innerHTML = '<option value="">-- اختر الدكتور --</option>' + profs.map(p => `<option value="${escapeHtml(p.id)}" data-name="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`).join('');
       
       profSelect.onchange = (e) => {
         const opt = e.target.options[e.target.selectedIndex];
@@ -1322,9 +1440,11 @@
       }
     };
 
-    // إضافة محاضرة بدون إلزامية الـ PDF
     window.addLecture = async function() {
-      const subject_id = document.getElementById('lec-subject-id').value;
+      const btn = document.getElementById('btn-add-lecture');
+      const subjectSelect = document.getElementById('lec-subject-id');
+      const subject_id = subjectSelect.value;
+      const subjectName = subjectSelect.selectedOptions?.[0]?.text || 'المقرر';
       const professor_id = document.getElementById('lec-prof-id').value;
       const title = document.getElementById('lec-title').value.trim();
       const video_url = document.getElementById('lec-video-url').value.trim();
@@ -1332,6 +1452,7 @@
       const pdf_url = document.getElementById('lec-pdf-url').value.trim();
       const duration_minutes = parseInt(document.getElementById('lec-duration').value) || 0;
       const order_index = parseInt(document.getElementById('lec-order').value) || 1;
+      const autoNotify = document.getElementById('lec-auto-notify')?.checked;
 
       if (!subject_id || !professor_id || !title) {
         return alert('يرجى اختيار الجامعة، الكلية، المادة، الدكتور، وكتابة عنوان المحاضرة');
@@ -1341,53 +1462,81 @@
         return alert('يرجى وضع رابط الفيديو أو معرّف فيديو التيليجرام على الأقل');
       }
 
-      const lecturePayload = {
-        subject_id,
-        professor_id,
-        title,
-        telegram_video_id: telegram_video_id || null,
-        video_url: video_url || null,
-        duration_minutes,
-        order_index
-      };
+      if (btn) { btn.disabled = true; btn.innerText = 'جاري الرفع والنشر...'; }
 
-      const pdfFile = document.getElementById('lec-pdf-file').files[0];
-      let uploadedPath = null;
-      if (pdfFile) {
-        try {
+      try {
+        const lecturePayload = {
+          subject_id,
+          professor_id,
+          title,
+          telegram_video_id: telegram_video_id || null,
+          video_url: video_url || null,
+          duration_minutes,
+          order_index
+        };
+
+        const pdfFile = document.getElementById('lec-pdf-file').files[0];
+        let uploadedPath = null;
+        if (pdfFile) {
           uploadedPath = await uploadLecturePdf(pdfFile, subject_id, professor_id);
-        } catch (e) {
-          return alert(friendlyError(e));
         }
-      }
-      if (uploadedPath) lecturePayload.pdf_url = uploadedPath;
-      else if (pdf_url) lecturePayload.pdf_url = pdf_url;
-      const description = document.getElementById('lec-description').value.trim();
-      if (description) lecturePayload.description = description;
+        if (uploadedPath) lecturePayload.pdf_url = uploadedPath;
+        else if (pdf_url) lecturePayload.pdf_url = pdf_url;
+        const description = document.getElementById('lec-description').value.trim();
+        if (description) lecturePayload.description = description;
 
-      const { data: newLec, error } = await supabase.from('lectures').insert([lecturePayload]).select('id').single();
+        const { data: newLec, error } = await supabase.from('lectures').insert([lecturePayload]).select('id').single();
 
-      if (error) {
-        if (uploadedPath) await supabase.storage.from('lecture-pdfs').remove([uploadedPath]);
-        alert(friendlyError(error));
-      } else {
-        logAction('create', 'lectures', null, { title, subject_id, professor_id });
-        alert('تم نشر المحاضرة بنجاح!');
-        document.getElementById('lec-title').value = '';
-        document.getElementById('lec-video-id').value = '';
-        document.getElementById('lec-pdf-file').value = '';
-        document.getElementById('lec-video-url').value = '';
-        document.getElementById('lec-pdf-url').value = '';
-        document.getElementById('lec-description').value = '';
-        window.loadLecturesList();
-        window.loadDashboardStats();
-        if (newLec?.id && confirm('هل تريد رفع أسئلة الاختبار لهذه المحاضرة الآن من ملف Excel أو PDF؟')) {
-          window.openQuizImport(newLec.id, title);
+        if (error) {
+          if (uploadedPath) await supabase.storage.from('lecture-pdfs').remove([uploadedPath]);
+          alert(friendlyError(error));
+        } else {
+          logAction('create', 'lectures', newLec?.id, { title, subject_id, professor_id });
+
+          // إرسال إشعار تلقائي لطلاب هذا المقرر في حال تفعيل الخيار
+          if (autoNotify) {
+            try {
+              const { data: subs } = await supabase
+                .from('student_subscriptions')
+                .select('user_id')
+                .eq('subject_id', subject_id)
+                .eq('status', 'active');
+              const uids = [...new Set((subs || []).map(s => s.user_id).filter(Boolean))];
+              if (uids.length > 0) {
+                const notifRows = uids.map(uid => ({
+                  user_id: uid,
+                  category: 'lecture',
+                  title: `محاضرة جديدة: ${title}`,
+                  body: `تم نشر محاضرة جديدة في مقرر ${subjectName}. يمكنك مشاهدتها الآن!`
+                }));
+                await supabase.from('notifications').insert(notifRows);
+              }
+            } catch (ne) { console.warn('Auto notification skipped:', ne); }
+          }
+
+          alert('تم نشر المحاضرة بنجاح!');
+          document.getElementById('lec-title').value = '';
+          document.getElementById('lec-video-id').value = '';
+          document.getElementById('lec-pdf-file').value = '';
+          document.getElementById('lec-video-url').value = '';
+          document.getElementById('lec-pdf-url').value = '';
+          document.getElementById('lec-description').value = '';
+          window.loadLecturesList();
+          window.loadDashboardStats();
+          if (newLec?.id && confirm('هل تريد رفع أسئلة الاختبار لهذه المحاضرة الآن من ملف Excel أو PDF؟')) {
+            window.openQuizImport(newLec.id, title);
+          }
+        }
+      } catch (e) {
+        alert(friendlyError(e));
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up ml-1"></i> حفظ ونشر المحاضرة';
         }
       }
     };
 
-    // جلب وعرض قائمة المحاضرات المنشورة مع معالجة آمنة وزر حذف
     window.loadLecturesList = async function() {
       const tbody = document.getElementById('lectures-table-body');
       if (!tbody) return;
@@ -1403,7 +1552,6 @@
         ]);
 
         if (lecRes.error) {
-          console.error('خطأ في جلب المحاضرات:', lecRes.error);
           tbody.innerHTML = `<tr><td colspan="7" class="text-center text-rose-400">خطأ في جلب البيانات: ${escapeHtml(lecRes.error.message)}</td></tr>`;
           return;
         }
@@ -1430,14 +1578,16 @@
 
           let pdfBadge = '<span class="text-slate-500 text-xs">لا يوجد ملخص</span>';
           if (l.pdf_url) {
-            pdfBadge = /^https?:/i.test(l.pdf_url)
-              ? `<a href="${escapeHtml(l.pdf_url)}" target="_blank" class="px-2 py-0.5 bg-rose-500/20 text-rose-300 border border-rose-500/30 rounded text-xs inline-flex items-center gap-1 hover:underline"><i class="fa-solid fa-file-pdf"></i> رابط مباشر</a>`
+            const safePdfHref = safeHttpUrl(l.pdf_url);
+            pdfBadge = safePdfHref
+              ? `<a href="${safePdfHref}" target="_blank" rel="noopener noreferrer" class="px-2 py-0.5 bg-rose-500/20 text-rose-300 border border-rose-500/30 rounded text-xs inline-flex items-center gap-1 hover:underline"><i class="fa-solid fa-file-pdf"></i> رابط مباشر</a>`
               : `<span class="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded text-xs inline-flex items-center gap-1"><i class="fa-solid fa-file-pdf"></i> مخزن آمن</span>`;
           }
 
           let videoPreview = '';
-          if (l.video_url) {
-            videoPreview = `<br><a href="${escapeHtml(l.video_url)}" target="_blank" class="text-[11px] text-emerald-400 hover:underline"><i class="fa-solid fa-circle-play"></i> رابط البث</a>`;
+          const safeVidHref = safeHttpUrl(l.video_url);
+          if (safeVidHref) {
+            videoPreview = `<br><a href="${safeVidHref}" target="_blank" rel="noopener noreferrer" class="text-[11px] text-emerald-400 hover:underline"><i class="fa-solid fa-circle-play"></i> رابط البث</a>`;
           } else if (l.telegram_video_id) {
             videoPreview = `<br><span class="text-[10px] text-sky-400 font-mono">Telegram ID</span>`;
           }
@@ -1459,11 +1609,11 @@
               </td>
               <td class="font-mono text-center">${l.duration_minutes || 0} دقيقة</td>
               <td class="text-center">${pdfBadge}</td>
-              <td class="text-center">
-                <button onclick="uploadPdfForLecture('${l.id}', '${l.subject_id}', '${l.professor_id}')" class="text-xs px-2.5 py-1 bg-rose-700 hover:bg-rose-600 rounded ml-1">📄 PDF</button>
-                <button onclick="openQuizImport('${l.id}', '${escapeHtml(l.title)}')" class="text-xs px-2.5 py-1 bg-sky-700 hover:bg-sky-600 rounded ml-1">📥 أسئلة</button>
-                <button onclick="editLecture('${l.id}')" class="text-xs px-2.5 py-1 bg-slate-700 hover:bg-slate-600 rounded ml-1">تعديل ✏️</button>
-                <button onclick="deleteLecture('${l.id}', '${escapeHtml(l.title)}')" class="btn-delete">
+              <td class="text-center whitespace-nowrap">
+                <button onclick="uploadPdfForLecture('${escapeJsArg(l.id)}', '${escapeJsArg(l.subject_id)}', '${escapeJsArg(l.professor_id)}')" class="text-xs px-2.5 py-1 bg-rose-700 hover:bg-rose-600 rounded ml-1">📄 PDF</button>
+                <button onclick="openQuizImport('${escapeJsArg(l.id)}', '${escapeJsArg(l.title)}')" class="text-xs px-2.5 py-1 bg-sky-700 hover:bg-sky-600 rounded ml-1">📥 أسئلة</button>
+                <button onclick="editLecture('${escapeJsArg(l.id)}')" class="text-xs px-2.5 py-1 bg-slate-700 hover:bg-slate-600 rounded ml-1">تعديل ✏️</button>
+                <button onclick="deleteLecture('${escapeJsArg(l.id)}', '${escapeJsArg(l.title)}')" class="btn-delete">
                   <i class="fa-solid fa-trash-can"></i> حذف
                 </button>
               </td>
@@ -1471,19 +1621,22 @@
           `;
         }).join('');
       } catch (err) {
-        console.error('استثناء عام في loadLecturesList:', err);
         tbody.innerHTML = `<tr><td colspan="7" class="text-center text-rose-400">حدث خطأ أثناء تحميل المحاضرات: ${escapeHtml(err.message)}</td></tr>`;
       }
     };
 
-    // دالة حذف المحاضرة
+    // حذف المحاضرة مع تنظيف ملف الـ PDF من Storage لمنع تراكم الملفات اليتيمة
     window.deleteLecture = async function(id, title) {
       if (!confirm(`هل أنت متأكد من حذف محاضرة "${title}" نهائياً؟`)) return;
       
+      const { data: oldLec } = await supabase.from('lectures').select('pdf_url').eq('id', id).maybeSingle();
       const { error } = await supabase.from('lectures').delete().eq('id', id);
       if (error) {
         alert(friendlyError(error));
       } else {
+        if (oldLec?.pdf_url && !/^https?:/i.test(oldLec.pdf_url)) {
+          await supabase.storage.from('lecture-pdfs').remove([oldLec.pdf_url]);
+        }
         logAction('delete', 'lectures', id, { title });
         alert('تم حذف المحاضرة بنجاح');
         window.loadLecturesList();
@@ -1492,6 +1645,7 @@
     };
 
     window.generateCodesBatch = async function() {
+      const btn = document.getElementById('btn-generate');
       const university_id = document.getElementById('gen-uni-select').value;
       const faculty_id = document.getElementById('gen-faculty-select').value;
       const subject_id = document.getElementById('gen-subject-id').value;
@@ -1502,40 +1656,49 @@
       const batch_number = parseInt(document.getElementById('gen-batch-num').value) || 1;
       const year = (document.getElementById('gen-year').value || '2026').slice(-2);
       const batch_name = document.getElementById('gen-batch').value.trim() || `دفعة ${batch_number} - ${subjectPrefix}`;
-      const count = parseInt(document.getElementById('gen-count').value) || 1;
+      const count = Math.min(500, Math.max(1, parseInt(document.getElementById('gen-count').value) || 1));
 
       if (!university_id || !faculty_id || !subject_id || !professor_id) {
         return alert('يرجى اختيار الجامعة، الكلية، المادة، والدكتور بالتسلسل الأكاديمي');
       }
 
-      const rows = [];
-      const seenSuffixes = new Set();
-      for (let i = 0; i < count; i++) {
-        let suffix;
-        do { suffix = randomString(8); } while (seenSuffixes.has(suffix));
-        seenSuffixes.add(suffix);
-        rows.push({
-          code: `${subjectPrefix}-${profPrefix}-B${batch_number}-${year}-${suffix}`,
-          university_id,
-          faculty_id,
-          subject_id,
-          professor_id,
-          batch_number,
-          batch_name,
-          status: 'active'
-        });
-      }
+      if (btn) { btn.disabled = true; btn.innerText = 'جاري التوليد...'; }
 
-      const { error } = await supabase.from('activation_codes').insert(rows);
-      if (error) alert(friendlyError(error));
-      else {
-        logAction('generate', 'activation_codes', null, { count, subject_id, professor_id, batch_number });
-        alert(`تم توليد ${count} كود بنجاح بالهيكل الأكاديمي الجديد!`);
-        if (confirm('هل تريد تنزيل الأكواد الجديدة كملف CSV الآن؟')) {
-          downloadCsv(`codes_${subjectPrefix}_B${batch_number}.csv`, [['الكود', 'الدفعة'], ...rows.map(r => [r.code, r.batch_name])]);
+      try {
+        const rows = [];
+        const seenSuffixes = new Set();
+        for (let i = 0; i < count; i++) {
+          let suffix;
+          do { suffix = randomString(8); } while (seenSuffixes.has(suffix));
+          seenSuffixes.add(suffix);
+          rows.push({
+            code: `${subjectPrefix}-${profPrefix}-B${batch_number}-${year}-${suffix}`,
+            university_id,
+            faculty_id,
+            subject_id,
+            professor_id,
+            batch_number,
+            batch_name,
+            status: 'active'
+          });
         }
-        window.loadCodes();
-        window.loadDashboardStats();
+
+        const { error } = await supabase.from('activation_codes').insert(rows);
+        if (error) alert(friendlyError(error));
+        else {
+          logAction('generate', 'activation_codes', null, { count, subject_id, professor_id, batch_number });
+          alert(`تم توليد ${count} كود بنجاح بالهيكل الأكاديمي الجديد!`);
+          if (confirm('هل تريد تنزيل الأكواد الجديدة كملف CSV الآن؟')) {
+            downloadCsv(`codes_${subjectPrefix}_B${batch_number}.csv`, [['الكود', 'الدفعة'], ...rows.map(r => [r.code, r.batch_name])]);
+          }
+          window.loadCodes();
+          window.loadDashboardStats();
+        }
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fa-solid fa-bolt ml-1"></i> بدء التوليد';
+        }
       }
     };
 
@@ -1585,22 +1748,21 @@
             <td class="text-center space-x-1 space-x-reverse whitespace-nowrap">
               ${c.status === 'used'
                 ? '<span class="text-[10px] text-slate-500" title="لإيقاف الطالب احظر اشتراكه من تبويب أجهزة الطلاب">مستخدم</span>'
-                : `<button onclick="toggleCode('${c.id}', '${c.status}')" class="text-xs px-2.5 py-1 bg-slate-700 hover:bg-slate-600 rounded">
+                : `<button onclick="toggleCode('${escapeJsArg(c.id)}', '${escapeJsArg(c.status)}')" class="text-xs px-2.5 py-1 bg-slate-700 hover:bg-slate-600 rounded">
                     ${c.status === 'active' ? 'تعطيل' : 'تفعيل'}
                   </button>`}
-              <button onclick="deleteCode('${c.id}', '${escapeHtml(c.code)}')" class="btn-delete">حذف 🗑️</button>
+              <button onclick="deleteCode('${escapeJsArg(c.id)}', '${escapeJsArg(c.code)}')" class="btn-delete">حذف 🗑️</button>
             </td>
           </tr>
         `).join('');
       } catch (err) {
-        console.error('خطأ في loadCodes:', err);
         tbody.innerHTML = `<tr><td colspan="6" class="text-center text-rose-400">تعذر جلب الأكواد: ${escapeHtml(err.message)}</td></tr>`;
       }
     };
 
     window.toggleCode = async function(id, currentStatus) {
       if (currentStatus === 'used') {
-        return alert('هذا الكود مستخدم بالفعل. لإيقاف الطالب احظر اشتراكه من تبويب أجهزة الطلاب (زر حظر).');
+        return alert('هذا الكود مستخدم بالفعل. لإيقاف الطالب احظر اشتراكه من تبويب أجهزة الطلاب.');
       }
       const status = currentStatus === 'active' ? 'disabled' : 'active';
       const { error } = await supabase.from('activation_codes').update({ status }).eq('id', id);
@@ -1611,18 +1773,17 @@
     };
 
     window.deleteCode = async function(id, code) {
-      // هل استخدم طالب هذا الكود؟ (بعد الحذف ينقطع الربط بين الكود والاشتراك)
       const { data: used } = await supabase.from('student_subscriptions')
         .select('id, status').eq('activation_code_id', id);
       const activeSubs = (used || []).filter(x => x.status === 'active');
       let msg = `هل أنت متأكد من حذف الكود "${code}" نهائياً؟`;
       if (activeSubs.length) {
-        msg += '\n\nهذا الكود مستخدم من طالب. سيتم أيضاً حظر اشتراكه فلا يستطيع متابعة المقرر (يمكنك إتاحته لاحقاً من تبويب أجهزة الطلاب).';
+        msg += '\n\nهذا الكود مستخدم من طالب. سيتم أيضاً حظر اشتراكه وطرده فوراً من المقرر.';
       }
       if (!confirm(msg)) return;
       if (activeSubs.length) {
         const { error: blockErr } = await supabase.from('student_subscriptions')
-          .update({ status: 'blocked' }).in('id', activeSubs.map(x => x.id));
+          .update({ status: 'banned' }).in('id', activeSubs.map(x => x.id));
         if (blockErr) return alert(friendlyError(blockErr));
         logAction('block', 'student_subscriptions', null, { reason: 'code_deleted', code });
       }
@@ -1635,7 +1796,7 @@
       }
     };
 
-    // جلب الاشتراكات والأجهزة وعرض اسم الطالب مع الجامعة والكلية
+    // جلب الاشتراكات والأجهزة مع دعم الحظر الفوري المتوافق مع Realtime Ban Listener في التطبيق
     window.loadSubscriptions = async function() {
       const tbody = document.getElementById('subs-table-body');
       if (!tbody) return;
@@ -1647,7 +1808,6 @@
           .select('*');
 
         if (subErr) {
-          console.error('خطأ في جلب الاشتراكات:', subErr);
           tbody.innerHTML = `<tr><td colspan="9" class="text-center text-rose-400">خطأ في جلب البيانات: ${escapeHtml(subErr.message)}</td></tr>`;
           return;
         }
@@ -1698,8 +1858,8 @@
           const subjObj = subjectMap[s.subject_id] || {};
           const uniName = uniMap[subjObj.university_id] || '-';
           const facName = facMap[subjObj.faculty_id] || '-';
-          const subjName = subjObj.name || s.subjects?.name || '-';
-          const docName = professorMap[s.professor_id] || s.professors?.name ? `د. ${professorMap[s.professor_id] || s.professors?.name}` : '-';
+          const subjName = subjObj.name || '-';
+          const docName = professorMap[s.professor_id] ? `د. ${professorMap[s.professor_id]}` : '-';
 
           return `
             <tr>
@@ -1716,30 +1876,30 @@
                   ${s.status === 'active' ? 'نشط' : 'محظور'}
                 </span>
               </td>
-              <td class="text-center">
-                <button onclick="toggleSub('${s.id}', '${s.status}')" class="text-xs px-2 py-1 bg-slate-700 hover:bg-slate-600 rounded">
-                  ${s.status === 'active' ? 'حظر' : 'إتاحة'}
+              <td class="text-center whitespace-nowrap">
+                <button onclick="toggleSub('${escapeJsArg(s.id)}', '${escapeJsArg(s.status)}')" class="text-xs px-2.5 py-1 ${s.status === 'active' ? 'bg-rose-700 hover:bg-rose-600 text-white' : 'bg-emerald-700 hover:bg-emerald-600 text-white'} rounded">
+                  ${s.status === 'active' ? 'حظر وطرد فوري 🚫' : 'إعادة تفعيل ✔'}
                 </button>
               </td>
-              <td class="text-center">
-                <button onclick="resetHardware('${s.id}')" class="text-xs px-2.5 py-1 bg-amber-600/30 text-amber-300 rounded hover:bg-amber-600/50">
+              <td class="text-center whitespace-nowrap">
+                <button onclick="resetHardware('${escapeJsArg(s.id)}')" class="text-xs px-2.5 py-1 bg-amber-600/30 text-amber-300 rounded hover:bg-amber-600/50">
                   فك الارتباط 🔓
                 </button>
               </td>
               <td class="text-center">
-                <button onclick="deleteSubscription('${s.id}')" class="btn-delete">حذف 🗑️</button>
+                <button onclick="deleteSubscription('${escapeJsArg(s.id)}')" class="btn-delete">حذف 🗑️</button>
               </td>
             </tr>
           `;
         }).join('');
       } catch (err) {
-        console.error('خطأ غير متوقع في loadSubscriptions:', err);
         tbody.innerHTML = `<tr><td colspan="9" class="text-center text-rose-400">حدث خطأ: ${escapeHtml(err.message)}</td></tr>`;
       }
     };
 
+    // نستخدم 'banned' ليتطابق مع مستمع الطرد اللحظي في تطبيق الفلاتر (HomeScreen)
     window.toggleSub = async function(id, currentStatus) {
-      const status = currentStatus === 'active' ? 'blocked' : 'active';
+      const status = currentStatus === 'active' ? 'banned' : 'active';
       const { error } = await supabase.from('student_subscriptions').update({ status }).eq('id', id);
       if (error) return alert(friendlyError(error));
       logAction('update', 'student_subscriptions', id, { status });
@@ -1747,11 +1907,11 @@
     };
 
     window.resetHardware = async function(id) {
-      if (!confirm('فك ارتباط الجهاز؟\n\nسيُطرد جهازه الحالي (لن يتمكن من متابعة المقرر عليه)، ويرتبط الاشتراك بأول جهاز مختلف يفتح المقرر. استخدمه عند تغيير الطالب لهاتفه.')) return;
+      if (!confirm('فك ارتباط الجهاز؟\n\nسيُطرد جهازه الحالي، ويرتبط الاشتراك بأول جهاز جديد يفتح المقرر.')) return;
       const { error } = await supabase.from('student_subscriptions').update({ hardware_fingerprint: null }).eq('id', id);
       if (error) return alert(friendlyError(error));
       logAction('reset_device', 'student_subscriptions', id, null);
-      alert('تم فك الارتباط. الجهاز القديم مطرود، وسيرتبط الاشتراك بأول جهاز جديد يفتح المقرر.\n(يتطلب تشغيل ملف 07_device_reset.sql في Supabase)');
+      alert('تم فك الارتباط بنجاح.');
       window.loadSubscriptions();
     };
 
@@ -1766,6 +1926,161 @@
       }
     };
 
+    // ======== 9. منظومة إرسال وإدارة الإشعارات للطلاب ========
+    window.onNotifTargetChange = function(val) {
+      const subjBox = document.getElementById('notif-subject-box');
+      const userBox = document.getElementById('notif-user-box');
+      subjBox.classList.toggle('hidden', val !== 'subject');
+      userBox.classList.toggle('hidden', val !== 'user');
+    };
+
+    window.prepareNotificationsTab = async function() {
+      const [subRes, profRes] = await Promise.all([
+        supabase.from('subjects').select('id, name').order('name'),
+        supabase.from('profiles').select('id, full_name, name, email').limit(500)
+      ]);
+
+      const subjSel = document.getElementById('notif-subject-select');
+      if (subjSel && subRes.data) {
+        subjSel.innerHTML = '<option value="">اختر المقرر...</option>' +
+          subRes.data.map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)}</option>`).join('');
+      }
+
+      const userSel = document.getElementById('notif-user-select');
+      if (userSel && profRes.data) {
+        userSel.innerHTML = '<option value="">اختر الطالب...</option>' +
+          profRes.data.map(u => {
+            const label = u.full_name || u.name || u.email || u.id.substring(0, 8);
+            return `<option value="${escapeHtml(u.id)}">${escapeHtml(label)} ${u.email ? `(${escapeHtml(u.email)})` : ''}</option>`;
+          }).join('');
+      }
+    };
+
+    window.sendNotification = async function() {
+      const btn = document.getElementById('btn-send-notif');
+      const targetType = document.getElementById('notif-target-type').value;
+      const category = document.getElementById('notif-category').value || 'admin';
+      const title = document.getElementById('notif-title').value.trim();
+      const body = document.getElementById('notif-body').value.trim();
+
+      if (!title || !body) {
+        return alert('يرجى كتابة عنوان الإشعار ونص التفاصيل');
+      }
+
+      if (btn) { btn.disabled = true; btn.innerText = 'جاري الإرسال...'; }
+
+      try {
+        let rowsToInsert = [];
+
+        if (targetType === 'all') {
+          rowsToInsert.push({ user_id: null, category, title, body });
+        } else if (targetType === 'user') {
+          const uid = document.getElementById('notif-user-select').value;
+          if (!uid) return alert('يرجى اختيار الطالب المستهدف');
+          rowsToInsert.push({ user_id: uid, category, title, body });
+        } else if (targetType === 'subject') {
+          const subjectId = document.getElementById('notif-subject-select').value;
+          if (!subjectId) return alert('يرجى اختيار المقرر المستهدف');
+          const { data: subs, error: subErr } = await supabase
+            .from('student_subscriptions')
+            .select('user_id')
+            .eq('subject_id', subjectId)
+            .eq('status', 'active');
+          if (subErr) throw subErr;
+          const uids = [...new Set((subs || []).map(s => s.user_id).filter(Boolean))];
+          if (uids.length === 0) {
+            return alert('لا يوجد طلاب مفعلون في هذا المقرر حالياً لإرسال الإشعار لهم.');
+          }
+          rowsToInsert = uids.map(uid => ({ user_id: uid, category, title, body }));
+        }
+
+        const { error } = await supabase.from('notifications').insert(rowsToInsert);
+        if (error) {
+          alert(friendlyError(error));
+        } else {
+          logAction('send_notification', 'notifications', null, { targetType, category, title, count: rowsToInsert.length });
+          alert(targetType === 'subject'
+            ? `تم إرسال الإشعار إلى ${rowsToInsert.length} طالب مشترك في المقرر بنجاح!`
+            : 'تم نشر الإشعار بنجاح وسيظهر في تطبيق الطلاب!');
+          document.getElementById('notif-title').value = '';
+          document.getElementById('notif-body').value = '';
+          window.loadNotificationsList();
+        }
+      } catch (e) {
+        alert(friendlyError(e));
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fa-solid fa-bell ml-1"></i> نشر وإرسال الإشعار الآن';
+        }
+      }
+    };
+
+    window.loadNotificationsList = async function() {
+      const tbody = document.getElementById('notifications-table-body');
+      if (!tbody) return;
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-slate-400">جاري تحميل الإشعارات...</td></tr>';
+
+      try {
+        const [{ data: notifs, error }, { data: profiles }] = await Promise.all([
+          supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(150),
+          supabase.from('profiles').select('id, full_name, name, email')
+        ]);
+
+        if (error) {
+          tbody.innerHTML = `<tr><td colspan="5" class="text-center text-rose-400">${escapeHtml(friendlyError(error))}</td></tr>`;
+          return;
+        }
+
+        if (!notifs || notifs.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" class="text-center text-slate-400">لا توجد إشعارات مرسلة بعد</td></tr>';
+          return;
+        }
+
+        const userMap = {};
+        (profiles || []).forEach(p => {
+          userMap[p.id] = p.full_name || p.name || p.email || p.id.substring(0, 8);
+        });
+
+        const catBadge = cat => {
+          if (cat === 'lecture') return '<span class="px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 text-xs">🎬 محاضرات</span>';
+          if (cat === 'security') return '<span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs">🛡️ أمان</span>';
+          return '<span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs">📢 إداري</span>';
+        };
+
+        tbody.innerHTML = notifs.map(n => {
+          const targetLabel = n.user_id
+            ? `<span class="text-sky-300 text-xs">👤 ${escapeHtml(userMap[n.user_id] || n.user_id.substring(0, 8))}</span>`
+            : '<span class="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 text-xs font-bold">🌍 جميع الطلاب</span>';
+          const dateStr = n.created_at ? new Date(n.created_at).toLocaleString('ar-SY') : '-';
+
+          return `
+            <tr>
+              <td class="whitespace-nowrap">${catBadge(n.category)}</td>
+              <td>
+                <b class="text-white">${escapeHtml(n.title)}</b>
+                <div class="text-xs text-slate-400 mt-0.5">${escapeHtml(n.body)}</div>
+              </td>
+              <td class="whitespace-nowrap">${targetLabel}</td>
+              <td class="text-xs text-slate-400 whitespace-nowrap">${escapeHtml(dateStr)}</td>
+              <td class="text-center">
+                <button onclick="deleteNotification('${escapeJsArg(n.id)}')" class="btn-delete">حذف 🗑️</button>
+              </td>
+            </tr>
+          `;
+        }).join('');
+      } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-rose-400">${escapeHtml(e.message)}</td></tr>`;
+      }
+    };
+
+    window.deleteNotification = async function(id) {
+      if (!confirm('هل تريد حذف هذا الإشعار من حسابات الطلاب؟')) return;
+      const { error } = await supabase.from('notifications').delete().eq('id', id);
+      if (error) return alert(friendlyError(error));
+      logAction('delete', 'notifications', id, null);
+      window.loadNotificationsList();
+    };
 
     // ======== الاختبارات ========
     let quizEditingId = null;
@@ -1786,7 +2101,7 @@
         .order('order_index');
       if (error) return alert(friendlyError(error));
       sel.innerHTML = (data && data.length)
-        ? '<option value="">-- اختر المحاضرة --</option>' + data.map(l => `<option value="${l.id}">${l.order_index}. ${escapeHtml(l.title)}</option>`).join('')
+        ? '<option value="">-- اختر المحاضرة --</option>' + data.map(l => `<option value="${escapeHtml(l.id)}">${l.order_index}. ${escapeHtml(l.title)}</option>`).join('')
         : '<option value="">لا توجد محاضرات لهذا الدكتور</option>';
       window.loadQuizzes();
     };
@@ -1816,8 +2131,8 @@
           <div class="p-3 border border-slate-700 rounded-lg">
             <div class="font-bold text-white mb-2">${i + 1}. ${escapeHtml(q.question)}</div>
             <ul class="mb-2 space-y-1">${opts}</ul>
-            <button onclick="editQuiz('${q.id}')" class="text-xs px-2.5 py-1 bg-slate-700 hover:bg-slate-600 rounded ml-1">تعديل ✏️</button>
-            <button onclick="deleteQuiz('${q.id}')" class="btn-delete">حذف 🗑️</button>
+            <button onclick="editQuiz('${escapeJsArg(q.id)}')" class="text-xs px-2.5 py-1 bg-slate-700 hover:bg-slate-600 rounded ml-1">تعديل ✏️</button>
+            <button onclick="deleteQuiz('${escapeJsArg(q.id)}')" class="btn-delete">حذف 🗑️</button>
           </div>`;
       }).join('');
     };
@@ -1839,7 +2154,6 @@
 
       const raw = [0, 1, 2, 3].map(i => document.getElementById('quiz-opt-' + i).value.trim());
       const correctRaw = parseInt(document.querySelector('input[name="quiz-correct"]:checked').value);
-      // نحذف الخيارات الفارغة ونعيد حساب رقم الإجابة الصحيحة
       const options = [];
       let correct = -1;
       raw.forEach((o, i) => {
@@ -1866,7 +2180,8 @@
       quizEditingId = id;
       document.getElementById('quiz-question').value = q.question;
       for (let i = 0; i < 4; i++) document.getElementById('quiz-opt-' + i).value = (q.options || [])[i] || '';
-      document.querySelector(`input[name="quiz-correct"][value="${q.correct_option_index}"]`).checked = true;
+      const radio = document.querySelector(`input[name="quiz-correct"][value="${q.correct_option_index}"]`);
+      if (radio) radio.checked = true;
       document.getElementById('quiz-save-btn').innerHTML = '<i class="fa-solid fa-floppy-disk ml-1"></i> حفظ التعديل';
       document.getElementById('quiz-cancel-btn').classList.remove('hidden');
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1941,12 +2256,9 @@
       }
     });
 
-
     // ======== رفع أسئلة من ملف (Excel / CSV / PDF) ========
-    // <<PARSERS
     const LETTER_INDEX = { a: 0, b: 1, c: 2, d: 3, e: 4, f: 5, 'أ': 0, 'ا': 0, 'ب': 1, 'ج': 2, 'د': 3, 'ه': 4, 'هـ': 4, 'و': 5 };
 
-    // يرجع رقم الخيار (من 0) حسب رقم/حرف/نص، أو -1 إذا لم يفهمه
     function resolveCorrectIndex(raw, options) {
       const t = String(raw ?? '').trim();
       if (!t) return -1;
@@ -1961,7 +2273,6 @@
       return options.findIndex(o => o.trim().toLowerCase() === t.toLowerCase());
     }
 
-    // صف Excel: [سؤال, خيار1, خيار2, خيار3, خيار4, الإجابة الصحيحة]
     function rowFromCells(cells) {
       const c = cells.map(v => String(v ?? '').trim());
       const question = c[0] || '';
@@ -1973,7 +2284,7 @@
       let correct = -1;
       const raw = c[5] || '';
       if (/^\d+$/.test(raw) || raw.replace(/[\.\)\s]/g, '').toLowerCase() in LETTER_INDEX) {
-        const orig = resolveCorrectIndex(raw, ['', '', '', '']); // الترقيم على الأعمدة الأصلية
+        const orig = resolveCorrectIndex(raw, ['', '', '', '']);
         correct = (orig >= 0 && map[orig] !== undefined) ? map[orig] : -1;
       } else {
         correct = resolveCorrectIndex(raw, options);
@@ -1989,7 +2300,6 @@
       return { question, options, correct, error, include: !error };
     }
 
-    // تحليل نص PDF: أسئلة مرقمة، خيارات A-D أو أ-د، وسطر "Answer: B" / "الإجابة: ب"
     function parseQuestionsFromLines(lines) {
       const qRe = /^(?:Q\s*)?(\d{1,3})\s*[\.\)\-:]\s*(.+)$/i;
       const optRe = /^\(?([A-Fa-fأابجدهو])\s*[\.\)\-:]\s*(.+)$/;
@@ -2016,7 +2326,6 @@
       push();
       return out;
     }
-    // PARSERS>>
 
     function loadScript(src) {
       return new Promise((resolve, reject) => {
@@ -2037,7 +2346,7 @@
       const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', codepage: 65001 });
       const sheet = wb.Sheets[wb.SheetNames[0]];
       let rows = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false, defval: '' });
-      if (rows.length && /سؤال|question/i.test(String(rows[0][0]))) rows = rows.slice(1); // تخطي سطر العناوين
+      if (rows.length && /سؤال|question/i.test(String(rows[0][0]))) rows = rows.slice(1);
       return rows.map(rowFromCells);
     }
 
@@ -2104,8 +2413,7 @@
           <div class="text-xs text-slate-400 mb-3 leading-6">
             <b class="text-slate-200">Excel / CSV (الأدق):</b> أعمدة: السؤال، الخيار 1-4، الإجابة الصحيحة (رقم أو حرف).
             <a href="#" onclick="downloadQuizTemplate(); return false;" class="text-sky-400 underline">تنزيل قالب جاهز</a><br>
-            <b class="text-slate-200">PDF:</b> يعمل فقط مع ملف نصي (غير ممسوح ضوئياً) بصيغة: سؤال مرقم، خيارات A) B) C) D) أو أ) ب) ج) د)، ثم سطر "Answer: B" أو "الإجابة: ب".
-            قد يخطئ مع ملفات PDF العربية، فراجع المعاينة دائماً قبل الحفظ.
+            <b class="text-slate-200">PDF:</b> يعمل فقط مع ملف نصي بصيغة: سؤال مرقم، خيارات A) B) C) D) أو أ) ب) ج) د)، ثم سطر "Answer: B" أو "الإجابة: ب".
           </div>
           <input type="file" id="quiz-import-file" accept=".xlsx,.xls,.csv,.pdf" class="form-control mb-3" onchange="handleQuizFile(this.files[0])">
           <div id="quiz-import-status" class="text-xs text-slate-400 mb-2"></div>
@@ -2125,7 +2433,6 @@
         status.textContent = '';
         window.renderImportPreview();
       } catch (err) {
-        console.error(err);
         status.innerHTML = `<span class="text-rose-400">تعذرت قراءة الملف: ${escapeHtml(err.message || err)}</span>`;
       }
     };
@@ -2150,7 +2457,7 @@
                 <tr class="${r.error ? 'opacity-60' : ''}">
                   <td class="text-center"><input type="checkbox" ${r.include && !r.error ? 'checked' : ''} ${r.error ? 'disabled' : ''} onchange="toggleImportRow(${i}, this.checked)"></td>
                   <td>
-                    <div class="font-bold text-white">${i + 1}. ${escapeHtml(r.question)}</div>
+                    <div class="font-bold text-white">${i + 1}.${escapeHtml(r.question)}</div>
                     <ul class="text-xs mt-1">${r.options.map((o, idx) => `<li class="${idx === r.correct ? 'text-emerald-300 font-bold' : 'text-slate-300'}">${idx === r.correct ? '✔ ' : '• '}${escapeHtml(o)}</li>`).join('')}</ul>
                     ${r.error ? `<div class="text-rose-400 text-xs mt-1">⚠ ${escapeHtml(r.error)} — لن يُحفظ</div>` : ''}
                   </td>
@@ -2186,7 +2493,6 @@
       if (document.getElementById('quiz-lecture-id')?.value === lecture_id) window.loadQuizzes();
     };
 
-
     // ======== تعديل الجامعات والكليات والمقررات والأساتذة ========
     async function promptUpdate(table, id, fields, afterReload) {
       const { data: row, error } = await supabase.from(table).select('*').eq('id', id).single();
@@ -2194,7 +2500,7 @@
       const patch = {};
       for (const f of fields) {
         const v = prompt(f.label, row[f.key] ?? '');
-        if (v === null) return;                       // إلغاء
+        if (v === null) return;
         const t = v.trim();
         if (f.required && !t) return alert('هذا الحقل مطلوب: ' + f.label);
         patch[f.key] = f.upper ? t.toUpperCase() : (t || (f.required ? row[f.key] : null));
@@ -2224,7 +2530,6 @@
       { key: 'bio', label: 'نبذة (اختياري):' },
       { key: 'avatar_url', label: 'رابط الصورة (اختياري):' }
     ], () => window.loadProfessorsList());
-
 
     // ======== رفع ملفات PDF إلى المخزن الخاص (Supabase Storage) ========
     async function uploadLecturePdf(file, subject_id, professor_id) {
@@ -2256,7 +2561,6 @@
             await supabase.storage.from('lecture-pdfs').remove([path]);
             return alert(friendlyError(error));
           }
-          // حذف الملف القديم من المخزن إن كان مساراً داخلياً
           if (old?.pdf_url && !/^https?:/i.test(old.pdf_url)) {
             await supabase.storage.from('lecture-pdfs').remove([old.pdf_url]);
           }
@@ -2275,18 +2579,26 @@
       const email = document.getElementById('admin-email').value.trim();
       const password = document.getElementById('admin-password').value;
       const errorMsg = document.getElementById('login-error-msg');
+      const submitBtn = document.getElementById('btn-login-submit');
 
-      const { data: signIn, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) {
-        errorMsg.innerText = "فشل الدخول: " + error.message;
-        errorMsg.classList.remove('hidden');
-      } else if (!(await verifyAdmin(signIn.user.id))) {
-        await supabase.auth.signOut();
-        errorMsg.innerText = "هذا الحساب غير مصرح له بالدخول كمسؤول.";
-        errorMsg.classList.remove('hidden');
-      } else {
-        document.getElementById('login-modal').classList.add('hidden');
-        window.initDashboard();
+      if (submitBtn) submitBtn.disabled = true;
+      errorMsg.classList.add('hidden');
+
+      try {
+        const { data: signIn, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) {
+          errorMsg.innerText = "فشل الدخول: " + error.message;
+          errorMsg.classList.remove('hidden');
+        } else if (!(await verifyAdmin(signIn.user.id))) {
+          await supabase.auth.signOut();
+          errorMsg.innerText = "هذا الحساب غير مصرح له بالدخول كمسؤول.";
+          errorMsg.classList.remove('hidden');
+        } else {
+          document.getElementById('login-modal').classList.add('hidden');
+          window.initDashboard();
+        }
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
       }
     };
 
