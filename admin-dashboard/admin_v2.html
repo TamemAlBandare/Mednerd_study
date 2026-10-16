@@ -576,8 +576,9 @@
               <input type="text" id="lec-pdf-url" placeholder="مسار الملف في Storage: subject_id/professor_id/file.pdf أو رابط مباشر (اختياري)" class="form-control font-mono text-xs">
             </div>
             <div>
-              <label class="block text-slate-400 mb-1">معرّف ملخص الـ PDF (Telegram PDF ID - اختياري)</label>
-              <input type="text" id="lec-pdf-id" placeholder="BQACAgIAAxkBA... (اختياري)" class="form-control font-mono text-xs">
+              <label class="block text-slate-400 mb-1">رفع ملف PDF للملخص (اختياري، حتى 50 ميغابايت)</label>
+              <input type="file" id="lec-pdf-file" accept="application/pdf,.pdf" class="form-control text-xs">
+              <p class="text-[11px] text-slate-500 mt-1">يُرفع إلى مخزن خاص لا يراه إلا المشتركون، ويُملأ مساره تلقائياً.</p>
             </div>
             <div>
               <label class="block text-slate-400 mb-1">المدة (بالدقائق)</label>
@@ -1328,7 +1329,6 @@
       const title = document.getElementById('lec-title').value.trim();
       const video_url = document.getElementById('lec-video-url').value.trim();
       const telegram_video_id = document.getElementById('lec-video-id').value.trim();
-      const telegram_pdf_id = document.getElementById('lec-pdf-id').value.trim();
       const pdf_url = document.getElementById('lec-pdf-url').value.trim();
       const duration_minutes = parseInt(document.getElementById('lec-duration').value) || 0;
       const order_index = parseInt(document.getElementById('lec-order').value) || 1;
@@ -1346,27 +1346,36 @@
         professor_id,
         title,
         telegram_video_id: telegram_video_id || null,
-        telegram_pdf_id: telegram_pdf_id || null,
         video_url: video_url || null,
         duration_minutes,
         order_index
       };
 
-      if (pdf_url) {
-        lecturePayload.pdf_url = pdf_url;
+      const pdfFile = document.getElementById('lec-pdf-file').files[0];
+      let uploadedPath = null;
+      if (pdfFile) {
+        try {
+          uploadedPath = await uploadLecturePdf(pdfFile, subject_id, professor_id);
+        } catch (e) {
+          return alert(friendlyError(e));
+        }
       }
+      if (uploadedPath) lecturePayload.pdf_url = uploadedPath;
+      else if (pdf_url) lecturePayload.pdf_url = pdf_url;
       const description = document.getElementById('lec-description').value.trim();
       if (description) lecturePayload.description = description;
 
       const { data: newLec, error } = await supabase.from('lectures').insert([lecturePayload]).select('id').single();
 
-      if (error) alert(friendlyError(error));
-      else {
+      if (error) {
+        if (uploadedPath) await supabase.storage.from('lecture-pdfs').remove([uploadedPath]);
+        alert(friendlyError(error));
+      } else {
         logAction('create', 'lectures', null, { title, subject_id, professor_id });
         alert('تم نشر المحاضرة بنجاح!');
         document.getElementById('lec-title').value = '';
         document.getElementById('lec-video-id').value = '';
-        document.getElementById('lec-pdf-id').value = '';
+        document.getElementById('lec-pdf-file').value = '';
         document.getElementById('lec-video-url').value = '';
         document.getElementById('lec-pdf-url').value = '';
         document.getElementById('lec-description').value = '';
@@ -1421,13 +1430,9 @@
 
           let pdfBadge = '<span class="text-slate-500 text-xs">لا يوجد ملخص</span>';
           if (l.pdf_url) {
-            pdfBadge = `<a href="${escapeHtml(l.pdf_url)}" target="_blank" class="px-2 py-0.5 bg-rose-500/20 text-rose-300 border border-rose-500/30 rounded text-xs inline-flex items-center gap-1 hover:underline">
-              <i class="fa-solid fa-file-pdf"></i> رابط مباشر
-            </a>`;
-          } else if (l.telegram_pdf_id) {
-            pdfBadge = `<span class="px-2 py-0.5 bg-sky-500/20 text-sky-300 border border-sky-500/30 rounded text-xs font-mono">
-              <i class="fa-brands fa-telegram"></i> تلغرام
-            </span>`;
+            pdfBadge = /^https?:/i.test(l.pdf_url)
+              ? `<a href="${escapeHtml(l.pdf_url)}" target="_blank" class="px-2 py-0.5 bg-rose-500/20 text-rose-300 border border-rose-500/30 rounded text-xs inline-flex items-center gap-1 hover:underline"><i class="fa-solid fa-file-pdf"></i> رابط مباشر</a>`
+              : `<span class="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded text-xs inline-flex items-center gap-1"><i class="fa-solid fa-file-pdf"></i> مخزن آمن</span>`;
           }
 
           let videoPreview = '';
@@ -1455,6 +1460,7 @@
               <td class="font-mono text-center">${l.duration_minutes || 0} دقيقة</td>
               <td class="text-center">${pdfBadge}</td>
               <td class="text-center">
+                <button onclick="uploadPdfForLecture('${l.id}', '${l.subject_id}', '${l.professor_id}')" class="text-xs px-2.5 py-1 bg-rose-700 hover:bg-rose-600 rounded ml-1">📄 PDF</button>
                 <button onclick="openQuizImport('${l.id}', '${escapeHtml(l.title)}')" class="text-xs px-2.5 py-1 bg-sky-700 hover:bg-sky-600 rounded ml-1">📥 أسئلة</button>
                 <button onclick="editLecture('${l.id}')" class="text-xs px-2.5 py-1 bg-slate-700 hover:bg-slate-600 rounded ml-1">تعديل ✏️</button>
                 <button onclick="deleteLecture('${l.id}', '${escapeHtml(l.title)}')" class="btn-delete">
@@ -1605,11 +1611,25 @@
     };
 
     window.deleteCode = async function(id, code) {
-      if (!confirm(`هل أنت متأكد من حذف الكود "${code}" نهائياً؟`)) return;
+      // هل استخدم طالب هذا الكود؟ (بعد الحذف ينقطع الربط بين الكود والاشتراك)
+      const { data: used } = await supabase.from('student_subscriptions')
+        .select('id, status').eq('activation_code_id', id);
+      const activeSubs = (used || []).filter(x => x.status === 'active');
+      let msg = `هل أنت متأكد من حذف الكود "${code}" نهائياً؟`;
+      if (activeSubs.length) {
+        msg += '\n\nهذا الكود مستخدم من طالب. سيتم أيضاً حظر اشتراكه فلا يستطيع متابعة المقرر (يمكنك إتاحته لاحقاً من تبويب أجهزة الطلاب).';
+      }
+      if (!confirm(msg)) return;
+      if (activeSubs.length) {
+        const { error: blockErr } = await supabase.from('student_subscriptions')
+          .update({ status: 'blocked' }).in('id', activeSubs.map(x => x.id));
+        if (blockErr) return alert(friendlyError(blockErr));
+        logAction('block', 'student_subscriptions', null, { reason: 'code_deleted', code });
+      }
       const { error } = await supabase.from('activation_codes').delete().eq('id', id);
       if (error) alert(friendlyError(error));
       else {
-        alert('تم حذف الكود بنجاح');
+        alert(activeSubs.length ? 'تم حذف الكود وحظر اشتراك الطالب' : 'تم حذف الكود بنجاح');
         window.loadCodes();
         window.loadDashboardStats();
       }
@@ -1727,11 +1747,11 @@
     };
 
     window.resetHardware = async function(id) {
-      if (!confirm('هل تريد فك ارتباط جهاز هذا الطالب للسماح له بالتسجيل من هاتف جديد؟')) return;
+      if (!confirm('فك ارتباط الجهاز؟\n\nسيُطرد جهازه الحالي (لن يتمكن من متابعة المقرر عليه)، ويرتبط الاشتراك بأول جهاز مختلف يفتح المقرر. استخدمه عند تغيير الطالب لهاتفه.')) return;
       const { error } = await supabase.from('student_subscriptions').update({ hardware_fingerprint: null }).eq('id', id);
       if (error) return alert(friendlyError(error));
       logAction('reset_device', 'student_subscriptions', id, null);
-      alert('تم فك الارتباط بنجاح! سيرتبط الاشتراك بأول جهاز يفتح المقرر.');
+      alert('تم فك الارتباط. الجهاز القديم مطرود، وسيرتبط الاشتراك بأول جهاز جديد يفتح المقرر.\n(يتطلب تشغيل ملف 07_device_reset.sql في Supabase)');
       window.loadSubscriptions();
     };
 
@@ -2204,6 +2224,51 @@
       { key: 'bio', label: 'نبذة (اختياري):' },
       { key: 'avatar_url', label: 'رابط الصورة (اختياري):' }
     ], () => window.loadProfessorsList());
+
+
+    // ======== رفع ملفات PDF إلى المخزن الخاص (Supabase Storage) ========
+    async function uploadLecturePdf(file, subject_id, professor_id) {
+      if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+        throw new Error('الملف المختار ليس PDF');
+      }
+      if (file.size > 50 * 1024 * 1024) {
+        throw new Error('حجم الملف أكبر من 50 ميغابايت (حد الخطة المجانية)');
+      }
+      const path = `${subject_id}/${professor_id}/${crypto.randomUUID()}.pdf`;
+      const { error } = await supabase.storage.from('lecture-pdfs')
+        .upload(path, file, { contentType: 'application/pdf', upsert: false });
+      if (error) throw error;
+      return path;
+    }
+
+    window.uploadPdfForLecture = function(id, subject_id, professor_id) {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'application/pdf,.pdf';
+      input.onchange = async () => {
+        const file = input.files[0];
+        if (!file) return;
+        try {
+          const path = await uploadLecturePdf(file, subject_id, professor_id);
+          const { data: old } = await supabase.from('lectures').select('pdf_url').eq('id', id).single();
+          const { error } = await supabase.from('lectures').update({ pdf_url: path }).eq('id', id);
+          if (error) {
+            await supabase.storage.from('lecture-pdfs').remove([path]);
+            return alert(friendlyError(error));
+          }
+          // حذف الملف القديم من المخزن إن كان مساراً داخلياً
+          if (old?.pdf_url && !/^https?:/i.test(old.pdf_url)) {
+            await supabase.storage.from('lecture-pdfs').remove([old.pdf_url]);
+          }
+          logAction('upload_pdf', 'lectures', id, { path });
+          alert('تم رفع الملخص بنجاح');
+          window.loadLecturesList();
+        } catch (e) {
+          alert(friendlyError(e));
+        }
+      };
+      input.click();
+    };
 
     window.handleAdminLogin = async function(e) {
       e.preventDefault();
